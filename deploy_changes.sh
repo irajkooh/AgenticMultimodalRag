@@ -222,7 +222,7 @@ git add -A
 git commit -q -m "$MSG [space deploy]"
 echo "▶ Force-pushing to HuggingFace Space..."
 git remote add space "$(cd - > /dev/null && git remote get-url space)"
-git push space space-deploy:main --force
+git push hf space-deploy:main --force
 popd > /dev/null
 rm -rf "$_tmpdir"
 
