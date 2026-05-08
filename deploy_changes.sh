@@ -10,23 +10,18 @@
 # WHAT IT DOES (in order):
 #   1. Stages all modified tracked files  (git add -u)
 #   2. Commits with your message
-#   3. Pushes to GitHub  (origin  → github.com/irajkooh/MultiModalRag)
+#   3. Pushes to GitHub  (origin  → github.com/irajkooh/AgenticMultimodalRag)
 #   4. Pushes to HF Space via a clean orphan branch — binary data files
-#      (PDF, PNG, DOCX) are excluded from the Space push because HF Space
+#      (PDF, PNG, DOCX, vectorstore, tables) are excluded from the Space push because HF Space
 #      does not support Git LFS; those files live in the HF Dataset repo
-#      irajkoohi/MultiModalRag_dataset and are downloaded at Space startup.
+#      irajkoohi/AgenticMultiModalRag_dataset and are downloaded at Space startup.
 #
 # DATA FILES (persistent across Space restarts):
-#   - Add/remove files in data/ and run:
-#       python3 -c "
-#       from huggingface_hub import HfApi
-#       import os, sys
-#       api = HfApi(token=os.environ['HF_TOKEN'])
-#       api.upload_file(path_or_fileobj=sys.argv[1],
-#                       path_in_repo='data/'+os.path.basename(sys.argv[1]),
-#                       repo_id='irajkoohi/MultiModalRag_dataset',
-#                       repo_type='dataset')
-#       " data/yourfile.pdf
+#   - Add/remove files in data/, vectorstore/, or data/tables/ and run:
+#       ./deploy_changes.sh "your commit message"
+#   - All persistent data is stored in the HF dataset:
+#       https://huggingface.co/datasets/irajkoohi/AgenticMultiModalRag_dataset
+#   - The Space will always restore data from this dataset on startup.
 #
 # NOTES:
 #   - Untracked new files are NOT staged automatically; run `git add <file>` first
@@ -233,6 +228,6 @@ rm -rf "$_tmpdir"
 
 echo ""
 echo "✅ Deployed successfully!"
-echo "   GitHub : https://github.com/irajkooh/MultiModalRag"
-echo "   Space  : https://huggingface.co/spaces/irajkoohi/MultiModalRag"
-echo "   Dataset: https://huggingface.co/datasets/irajkoohi/MultiModalRag_dataset"
+echo "   GitHub : https://github.com/irajkooh/AgenticMultimodalRag"
+echo "   Space  : https://huggingface.co/spaces/irajkoohi/AgenticMultimodalRag"
+echo "   Dataset: https://huggingface.co/datasets/irajkoohi/AgenticMultiModalRag_dataset"
