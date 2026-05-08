@@ -1,3 +1,18 @@
+# Exclude all persistent data and binaries
+data/*.pdf
+data/*.docx
+data/*.png
+data/*.jpg
+data/*.jpeg
+data/*.xlsx
+data/images/
+data/tables/
+vectorstore/
+vectorstore_corrupted_backup/
+_secrets/
+.venv/
+__pycache__/
+*.pyc
 _secrets/
 _secrets/
 data/2024 IBC.pdf
