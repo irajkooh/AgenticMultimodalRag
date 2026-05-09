@@ -81,7 +81,116 @@ fi
 echo "▶ Pushing to GitHub (origin)..."
 git push origin main
 
-    # Dataset sync/upload is now disabled. All file management is handled by the Space/app, not by deploy script.
+# ── Upload committed binary data files to HF Hub dataset ─────────────────────
+# PDFs/DOCX/PNGs are excluded from the Space rsync (no Git LFS support).
+# Uploading them here ensures sync_from_hf_hub() can download them on Space startup.
+echo "▶ Syncing data files to HF Hub dataset (upload new + delete removed)..."
+python3 - <<'PYEOF'
+import os, sys, re, subprocess
+from pathlib import Path
+
+token = os.environ.get("MultiModalRag_Token", "").strip()
+if not token:
+    try:
+        with open("_secrets/HF_TOKEN.txt") as f:
+            for line in f:
+                line = line.strip()
+                if re.match(r'^hf_[A-Za-z0-9]+$', line):
+                    token = line
+                    break
+    except Exception:
+        pass
+if not token:
+    print("⚠  HF token not found — skipping data file sync to HF Hub")
+    sys.exit(0)
+
+from huggingface_hub import HfApi, CommitOperationAdd, CommitOperationDelete
+api = HfApi(token=token)
+repo = "irajkoohi/MultiModalRag_dataset"
+
+result = subprocess.run(["git", "ls-files", "data/"], capture_output=True, text=True)
+committed = result.stdout.splitlines()
+
+# Top-level data files only (no subdirs like images/ or tables/)
+sync_exts = {'.pdf', '.png', '.jpg', '.jpeg', '.docx', '.xlsx', '.txt'}
+local_files = [
+    f for f in committed
+    if Path(f).suffix.lower() in sync_exts and '/' not in f[len("data/"):]
+]
+local_set = set(local_files)
+
+# Files present on HF Hub dataset under data/ (top-level only)
+hub_data_files = [
+    f for f in api.list_repo_files(repo, repo_type="dataset")
+    if f.startswith("data/") and '/' not in f[len("data/"):]
+]
+
+upload_ops = [CommitOperationAdd(path_in_repo=f, path_or_fileobj=f) for f in local_files]
+delete_ops = [CommitOperationDelete(path_in_repo=f) for f in hub_data_files if f not in local_set]
+
+all_ops = upload_ops + delete_ops
+if not all_ops:
+    print("  Data files already in sync — nothing to do.")
+    sys.exit(0)
+
+try:
+    api.create_commit(
+        repo_id=repo,
+        repo_type="dataset",
+        operations=all_ops,
+        commit_message="deploy: sync data files",
+    )
+    if upload_ops:
+        print(f"✅  Uploaded {len(upload_ops)} file(s): {[Path(f).name for f in local_files]}")
+    if delete_ops:
+        to_del = [Path(f).name for f in hub_data_files if f not in local_set]
+        print(f"🗑️  Deleted {len(delete_ops)} stale file(s) from HF Hub: {to_del}")
+except Exception as e:
+    print(f"⚠  HF Hub data sync failed: {e}")
+PYEOF
+
+# ── Upload data/tables/ (SQLite DBs) to HF Hub dataset ───────────────────────
+echo "▶ Syncing data/tables/ to HF Hub dataset..."
+python3 - <<'PYEOF'
+import os, sys, re
+from pathlib import Path
+
+token = os.environ.get("MultiModalRag_Token", "").strip()
+if not token:
+    try:
+        with open("_secrets/HF_TOKEN.txt") as f:
+            for line in f:
+                line = line.strip()
+                if re.match(r'^hf_[A-Za-z0-9]+$', line):
+                    token = line
+                    break
+    except Exception:
+        pass
+if not token:
+    print("⚠  HF token not found — skipping tables sync to HF Hub")
+    sys.exit(0)
+
+tables_dir = Path("data/tables")
+if not tables_dir.exists() or not any(tables_dir.iterdir()):
+    print("  data/tables/ is empty — skipping.")
+    sys.exit(0)
+
+from huggingface_hub import HfApi
+api = HfApi(token=token)
+repo = "irajkoohi/MultiModalRag_dataset"
+try:
+    api.upload_folder(
+        folder_path=str(tables_dir),
+        path_in_repo="tables",
+        repo_id=repo,
+        repo_type="dataset",
+        commit_message="deploy: sync tables",
+        ignore_patterns=["*.lock", ".DS_Store"],
+    )
+    print(f"✅  Uploaded data/tables/ to HF Hub dataset")
+except Exception as e:
+    print(f"⚠  Tables sync failed: {e}")
+PYEOF
 
 # ── HF Space push via a temp directory (never touches working tree) ──────────
 echo "▶ Building clean Space deploy branch (binary files excluded)..."
