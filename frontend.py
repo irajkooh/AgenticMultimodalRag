@@ -397,8 +397,24 @@ def _clean_for_tts(text: str) -> str:
 _copy_counter = [0]
 
 def get_chat_for_copy(history):
-    _copy_counter[0] += 1
-    return f"{_copy_counter[0]}\n{format_chat_history(history)}"
+  _copy_counter[0] += 1
+  # Remove ALL <details>...</details> blocks from assistant messages (not just Debug Info)
+  def strip_all_details(text):
+    return _re.sub(r"<details>.*?</details>", "", text, flags=_re.DOTALL)
+  cleaned_history = []
+  for msg in history:
+    if isinstance(msg, dict) and msg.get("role") == "assistant":
+      content = _extract_text(msg.get("content", ""))
+      content = strip_all_details(content)
+      cleaned_history.append({"role": "assistant", "content": content})
+    elif isinstance(msg, dict):
+      cleaned_history.append(msg)
+    elif isinstance(msg, tuple) and len(msg) == 2:
+      user, bot = msg
+      cleaned_history.append((user, strip_all_details(bot) if bot else bot))
+    else:
+      cleaned_history.append(msg)
+  return f"{_copy_counter[0]}\n{format_chat_history(cleaned_history)}"
 
 
 _UI_THEME = gr.themes.Soft()

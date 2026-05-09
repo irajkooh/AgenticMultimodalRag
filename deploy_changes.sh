@@ -38,7 +38,7 @@ if $RESET_DB; then
     echo "▶ Clearing stale vectorstore from HF Hub dataset..."
     python3 - <<'PYEOF'
 import os, sys, re
-token = os.environ.get("MultiModalRag_Token", "").strip()
+token = os.environ.get("AgenticMultiModalRag_Token", "").strip()
 if not token:
     # Try loading from _secrets/HF_TOKEN.txt — extract the hf_... token line
     try:
@@ -89,7 +89,7 @@ python3 - <<'PYEOF'
 import os, sys, re, subprocess
 from pathlib import Path
 
-token = os.environ.get("MultiModalRag_Token", "").strip()
+token = os.environ.get("AgenticMultiModalRag_Token", "").strip()
 if not token:
     try:
         with open("_secrets/HF_TOKEN.txt") as f:
@@ -155,7 +155,7 @@ python3 - <<'PYEOF'
 import os, sys, re
 from pathlib import Path
 
-token = os.environ.get("MultiModalRag_Token", "").strip()
+token = os.environ.get("AgenticMultiModalRag_Token", "").strip()
 if not token:
     try:
         with open("_secrets/HF_TOKEN.txt") as f:
