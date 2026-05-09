@@ -55,7 +55,7 @@ if not token:
     sys.exit(0)
 from huggingface_hub import HfApi
 api = HfApi(token=token)
-repo = "irajkoohi/AgenticMultiModalRag_dataset"
+repo = "irajkoohi/MultiModalRag_dataset"
 try:
     files = [f for f in api.list_repo_files(repo, repo_type="dataset") if f.startswith("vectorstore/")]
     for f in files:
@@ -81,7 +81,10 @@ fi
 echo "▶ Pushing to GitHub (origin)..."
 git push origin main
 
-echo "▶ Syncing data files and dataset card to HF Hub dataset (upload new + delete removed)..."
+# ── Upload committed binary data files to HF Hub dataset ─────────────────────
+# PDFs/DOCX/PNGs are excluded from the Space rsync (no Git LFS support).
+# Uploading them here ensures sync_from_hf_hub() can download them on Space startup.
+echo "▶ Syncing data files to HF Hub dataset (upload new + delete removed)..."
 python3 - <<'PYEOF'
 import os, sys, re, subprocess
 from pathlib import Path
@@ -103,19 +106,7 @@ if not token:
 
 from huggingface_hub import HfApi, CommitOperationAdd, CommitOperationDelete
 api = HfApi(token=token)
-repo = "irajkoohi/AgenticMultiModalRag_dataset"
-
-# Always upload README.md as the dataset card
-readme_candidates = ["data/README.md", "README.md"]
-readme_path = None
-for candidate in readme_candidates:
-    if os.path.exists(candidate):
-        readme_path = candidate
-        break
-if readme_path:
-    readme_op = [CommitOperationAdd(path_in_repo="README.md", path_or_fileobj=readme_path)]
-else:
-    readme_op = []
+repo = "irajkoohi/MultiModalRag_dataset"
 
 result = subprocess.run(["git", "ls-files", "data/"], capture_output=True, text=True)
 committed = result.stdout.splitlines()
@@ -137,9 +128,9 @@ hub_data_files = [
 upload_ops = [CommitOperationAdd(path_in_repo=f, path_or_fileobj=f) for f in local_files]
 delete_ops = [CommitOperationDelete(path_in_repo=f) for f in hub_data_files if f not in local_set]
 
-all_ops = upload_ops + delete_ops + readme_op
+all_ops = upload_ops + delete_ops
 if not all_ops:
-    print("  Data files and README already in sync — nothing to do.")
+    print("  Data files already in sync — nothing to do.")
     sys.exit(0)
 
 try:
@@ -147,15 +138,13 @@ try:
         repo_id=repo,
         repo_type="dataset",
         operations=all_ops,
-        commit_message="deploy: sync data files and dataset card",
+        commit_message="deploy: sync data files",
     )
     if upload_ops:
         print(f"✅  Uploaded {len(upload_ops)} file(s): {[Path(f).name for f in local_files]}")
     if delete_ops:
         to_del = [Path(f).name for f in hub_data_files if f not in local_set]
         print(f"🗑️  Deleted {len(delete_ops)} stale file(s) from HF Hub: {to_del}")
-    if readme_op:
-        print("✅  Uploaded README.md as dataset card to HF Hub dataset")
 except Exception as e:
     print(f"⚠  HF Hub data sync failed: {e}")
 PYEOF
@@ -188,7 +177,7 @@ if not tables_dir.exists() or not any(tables_dir.iterdir()):
 
 from huggingface_hub import HfApi
 api = HfApi(token=token)
-repo = "irajkoohi/AgenticMultiModalRag_dataset"
+repo = "irajkoohi/MultiModalRag_dataset"
 try:
     api.upload_folder(
         folder_path=str(tables_dir),
