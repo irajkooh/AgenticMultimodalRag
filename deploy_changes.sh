@@ -55,7 +55,7 @@ if not token:
     sys.exit(0)
 from huggingface_hub import HfApi
 api = HfApi(token=token)
-repo = "irajkoohi/MultiModalRag_dataset"
+repo = "irajkoohi/AgenticMultiModalRag_dataset"
 try:
     files = [f for f in api.list_repo_files(repo, repo_type="dataset") if f.startswith("vectorstore/")]
     for f in files:
@@ -103,7 +103,7 @@ if not token:
 
 from huggingface_hub import HfApi, CommitOperationAdd, CommitOperationDelete
 api = HfApi(token=token)
-repo = "irajkoohi/MultiModalRag_dataset"
+repo = "irajkoohi/AgenticMultiModalRag_dataset"
 
 # Always upload README.md as the dataset card
 readme_candidates = ["data/README.md", "README.md"]
@@ -188,7 +188,7 @@ if not tables_dir.exists() or not any(tables_dir.iterdir()):
 
 from huggingface_hub import HfApi
 api = HfApi(token=token)
-repo = "irajkoohi/MultiModalRag_dataset"
+repo = "irajkoohi/AgenticMultiModalRag_dataset"
 try:
     api.upload_folder(
         folder_path=str(tables_dir),
