@@ -81,13 +81,7 @@ fi
 echo "▶ Pushing to GitHub (origin)..."
 git push origin main
 
-token = os.environ.get("MultiModalRag_Token", "").strip()
-def get_local_files(base_dir):
-def get_hub_files(prefix):
-sync_dirs = [
-token = os.environ.get("MultiModalRag_Token", "").strip()
-tables_dir = Path("data/tables")
-  # Dataset sync/upload is now disabled. All file management is handled by the Space/app, not by deploy script.
+    # Dataset sync/upload is now disabled. All file management is handled by the Space/app, not by deploy script.
 
 # ── HF Space push via a temp directory (never touches working tree) ──────────
 echo "▶ Building clean Space deploy branch (binary files excluded)..."
