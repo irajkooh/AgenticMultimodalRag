@@ -1,17 +1,7 @@
-# ─── Sync Progress API Endpoints ───────────────────────────────────────────
-from fastapi import APIRouter
 
-@app.post("/sync/start")
-async def start_sync_from_hf_hub():
-    """Trigger sync from HF Hub dataset with progress tracking."""
-    loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, sync_from_hf_hub_with_progress)
-    return {"message": "Sync started"}
 
-@app.get("/sync/progress")
-async def sync_progress():
-    """Get current sync progress."""
-    return get_sync_progress()
+# ...existing code...
+
 """
 FastAPI backend for the Multimodal RAG system.
 Exposes endpoints for document management and querying.
