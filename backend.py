@@ -356,7 +356,7 @@ print(
 _copy_committed_files()
 if _IS_HF_SPACE:
     sync_vectorstore_from_hf_hub()
-    sync_from_hf_hub()
+    sync_from_hf_hub_with_progress()
     sync_tables_from_hf_hub()
     sync_images_from_hf_hub()
 else:
