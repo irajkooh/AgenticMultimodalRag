@@ -81,10 +81,6 @@ fi
 echo "▶ Pushing to GitHub (origin)..."
 git push origin main
 
-# ── Upload committed binary data files to HF Hub dataset ─────────────────────
-# PDFs/DOCX/PNGs are excluded from the Space rsync (no Git LFS support).
-# Uploading them here ensures sync_from_hf_hub() can download them on Space startup.
-token = os.environ.get("MultiModalRag_Token", "").strip()
 echo "▶ Syncing data files and dataset card to HF Hub dataset (upload new + delete removed)..."
 python3 - <<'PYEOF'
 import os, sys, re, subprocess
