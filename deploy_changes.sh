@@ -87,6 +87,43 @@ git push origin main
 echo "▶ Syncing data files to HF Hub dataset (upload new + delete removed)..."
 python3 - <<'PYEOF'
 import os, sys, re
+from huggingface_hub import HfApi, CommitOperationDelete
+
+token = os.environ.get("MultiModalRag_Token", "").strip()
+if not token:
+    try:
+        with open("_secrets/HF_TOKEN.txt") as f:
+            for line in f:
+                line = line.strip()
+                if re.match(r'^hf_[A-Za-z0-9]+$', line):
+                    token = line
+                    break
+    except Exception:
+        pass
+if not token:
+    print("⚠  HF token not found — skipping dataset clean on HF Hub")
+    sys.exit(0)
+
+api = HfApi(token=token)
+repo = "irajkoohi/MultiModalRag_dataset"
+all_files = api.list_repo_files(repo, repo_type="dataset")
+delete_ops = [CommitOperationDelete(path_in_repo=f) for f in all_files]
+if delete_ops:
+    try:
+        api.create_commit(
+            repo_id=repo,
+            repo_type="dataset",
+            operations=delete_ops,
+            commit_message="deploy: clean dataset before sync",
+        )
+        print(f"🗑️  Deleted {len(delete_ops)} file(s) from HF Hub dataset (cleaned)")
+    except Exception as e:
+        print(f"⚠  HF Hub dataset clean failed: {e}")
+else:
+    print("  Dataset already empty — nothing to clean.")
+PYEOF
+python3 - <<'PYEOF'
+import os, sys, re
 from pathlib import Path
 from huggingface_hub import HfApi, CommitOperationAdd, CommitOperationDelete
 
