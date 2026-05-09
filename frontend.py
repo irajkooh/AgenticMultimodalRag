@@ -294,9 +294,8 @@ def chat_fn(message, history, n_results, temperature, source_filter=None):
   resp = api_post("/query", json=payload, timeout=480)
   tokens_user = resp.get("tokens_user", 0)
   tokens_assistant = resp.get("tokens_assistant", 0)
-  debug_info = f"\n\n---\n<details><summary>Debug Info</summary>\n<pre>{resp}</pre></details>"
   if "error" in resp:
-    answer = f"⚠️ {resp['error']}" + debug_info
+    answer = f"⚠️ {resp['error']}"
   else:
     answer = resp.get("answer", "I DON'T KNOW")
     sources = resp.get("sources", [])
@@ -309,14 +308,15 @@ def chat_fn(message, history, n_results, temperature, source_filter=None):
     else:
       method_note = f"🔍 *Answer retrieved from document chunks ({chunks_used} chunks)*"
 
-    if sql_query:
+
+    # Always show the SQL block for table_query answers, even if sql_query is empty
+    if answer_method == "table_query":
       answer += f"\n\n**SQL query used:**\n```sql\n{sql_query}\n```"
 
     if sources:
       answer += f"\n\n{method_note}\n📄 *Sources: {', '.join(sources)}*"
     else:
       answer += f"\n\n{method_note}"
-    answer += debug_info
   history = list(history) if history else []
   if history and isinstance(history[0], tuple):
     new_hist = []
@@ -400,7 +400,11 @@ def get_chat_for_copy(history):
   _copy_counter[0] += 1
   # Remove ALL <details>...</details> blocks from assistant messages (not just Debug Info)
   def strip_all_details(text):
-    return _re.sub(r"<details>.*?</details>", "", text, flags=_re.DOTALL)
+    # Remove <details> blocks (debug/info), and SQL query blocks
+    text = _re.sub(r"<details>.*?</details>", "", text, flags=_re.DOTALL)
+    # Remove '**SQL query used:**' and the following SQL code block
+    text = _re.sub(r"\*\*SQL query used:\*\*\n```sql[\s\S]*?```", "", text)
+    return text
   cleaned_history = []
   for msg in history:
     if isinstance(msg, dict) and msg.get("role") == "assistant":
@@ -502,23 +506,13 @@ def build_ui():
       # --- Workflow Toggle and Diagram (moved above tabs, compact) ---
       with gr.Row():
         workflow_toggle = gr.Checkbox(label="Show Agentic Workflow", value=False, elem_id="workflow-toggle")
+      from utils import get_workflow_mermaid
+      def get_workflow_html():
+        mermaid_code = get_workflow_mermaid()
+        return f"""<div id=\"workflow-diagram-wrap\" style='max-width:520px; margin:8px 0; padding:16px; background:#1e293b; border-radius:8px;'>\n<div class=\"mermaid\" style=\"background:transparent;\">\n{mermaid_code}\n</div>\n</div>"""
+
       workflow_mermaid = gr.HTML(
-        value="""<div id="workflow-diagram-wrap" style='max-width:520px; margin:8px 0; padding:16px; background:#1e293b; border-radius:8px;'>
-<div class="mermaid" style="background:transparent;">
-flowchart TD
-  A[Supervisor] --> B[Router]
-  B -- Table --> C[SQL Gen]
-  C --> D[Table]
-  D --> G[Reason]
-  B -- Doc/Image --> E[Doc/Image]
-  E --> G
-  G --> H[Grade]
-  G --> I[Halluc.]
-  H & I --> J{OK?}
-  J -- Yes --> K[Return]
-  J -- No --> L[Retry]
-</div>
-</div>""",
+        value=get_workflow_html(),
         visible=False,
       )
       def toggle_workflow(show):
@@ -622,14 +616,16 @@ flowchart TD
               delete_btn     = gr.Button("🗑 Remove selected", elem_id="delete-btn")
               delete_all_btn = gr.Button("🗑 Remove ALL",      elem_id="delete-all-btn")
               refresh_btn    = gr.Button("↻ Refresh list",    elem_id="refresh-btn")
+              debug_btn      = gr.Button("🔍 Debug Info", elem_id="debug-btn")
               reextract_btn  = gr.Button("⚙ Re-extract tables & images", elem_id="reextract-btn")
             # Confirmation row for Remove ALL
             with gr.Row(visible=False) as confirm_row:
               gr.Markdown('<span style="font-size:0.95em;color:#f87171;">⚠️ Remove ALL embeddings? This cannot be undone.</span>')
               confirm_yes_btn = gr.Button("✔ Yes, remove all", elem_id="confirm-yes-btn")
               confirm_no_btn  = gr.Button("✖ Cancel",          elem_id="confirm-no-btn")
-            debug_btn = gr.Button("🔍 Debug Info", elem_id="debug-btn")
+
             debug_out = gr.HTML(value="", elem_id="debug-out")
+            debug_visible = gr.State(False)
 
 
 
@@ -945,7 +941,20 @@ flowchart TD
         inputs=[],
         outputs=[status_text],
       )
-      debug_btn.click(fn=get_debug_info, outputs=[debug_out])
+
+      def toggle_debug_info(current_visible, current_html):
+          if current_visible:
+              # Hide debug info
+              return "", False
+          else:
+              # Show debug info
+              return get_debug_info(), True
+
+      debug_btn.click(
+          fn=toggle_debug_info,
+          inputs=[debug_visible, debug_out],
+          outputs=[debug_out, debug_visible],
+      )
 
       # Always update state when user changes selection
       doc_list.change(

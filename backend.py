@@ -153,7 +153,7 @@ def sync_vectorstore_from_hf_hub():
     load existing embeddings and avoid re-indexing on cold start.
     """
     if not (HF_DATASET_REPO and HF_TOKEN):
-        print("[STARTUP] sync_vectorstore: SKIPPED — HF_DATASET_REPO or HF_TOKEN not set", flush=True)
+        # print("[STARTUP] sync_vectorstore: SKIPPED — HF_DATASET_REPO or HF_TOKEN not set", flush=True)
         return
     try:
         import huggingface_hub
@@ -162,9 +162,9 @@ def sync_vectorstore_from_hf_hub():
         files = list(api.list_repo_files(HF_DATASET_REPO, repo_type="dataset"))
         vs_files = [f for f in files if f.startswith("vectorstore/")]
         if not vs_files:
-            print("[STARTUP] sync_vectorstore: no vectorstore in HF Hub — will build from scratch", flush=True)
+            # print("[STARTUP] sync_vectorstore: no vectorstore in HF Hub — will build from scratch", flush=True)
             return
-        print(f"[STARTUP] sync_vectorstore: downloading {len(vs_files)} file(s)...", flush=True)
+        # print(f"[STARTUP] sync_vectorstore: downloading {len(vs_files)} file(s)...", flush=True)
         for path_in_repo in vs_files:
             rel = path_in_repo[len("vectorstore/"):]
             if not rel:
@@ -178,9 +178,9 @@ def sync_vectorstore_from_hf_hub():
                 token=HF_TOKEN,
             )
             shutil.copy2(dl, str(local))
-        print(f"[STARTUP] sync_vectorstore: restored {len(vs_files)} file(s) OK", flush=True)
+        # print(f"[STARTUP] sync_vectorstore: restored {len(vs_files)} file(s) OK", flush=True)
     except Exception as e:
-        print(f"[STARTUP] sync_vectorstore: FAILED — {e}", flush=True)
+        # print(f"[STARTUP] sync_vectorstore: FAILED — {e}", flush=True)
         logger.warning(f"HF Hub vectorstore sync failed: {e}")
 
 
@@ -241,7 +241,7 @@ def push_tables_to_hf_hub():
 
 def sync_tables_from_hf_hub():
     if not (HF_DATASET_REPO and HF_TOKEN):
-        print("[STARTUP] sync_tables: SKIPPED — HF_DATASET_REPO or HF_TOKEN not set", flush=True)
+        # print("[STARTUP] sync_tables: SKIPPED — HF_DATASET_REPO or HF_TOKEN not set", flush=True)
         return
     try:
         import huggingface_hub
@@ -250,9 +250,9 @@ def sync_tables_from_hf_hub():
         files = list(api.list_repo_files(HF_DATASET_REPO, repo_type="dataset"))
         table_files = [f for f in files if f.startswith("tables/")]
         if not table_files:
-            print("[STARTUP] sync_tables: no tables found on HF Hub — will rely on on-demand extraction", flush=True)
+            # print("[STARTUP] sync_tables: no tables found on HF Hub — will rely on on-demand extraction", flush=True)
             return
-        print(f"[STARTUP] sync_tables: downloading {len(table_files)} file(s)...", flush=True)
+        # print(f"[STARTUP] sync_tables: downloading {len(table_files)} file(s)...", flush=True)
         tables_dir = Path(DATA_DIR) / "tables"
         tables_dir.mkdir(parents=True, exist_ok=True)
         for path_in_repo in table_files:
@@ -268,9 +268,9 @@ def sync_tables_from_hf_hub():
             )
             shutil.copy2(dl, str(local))
             logger.info(f"HF Hub tables: restored '{rel}'")
-        print(f"[STARTUP] sync_tables: restored {len(table_files)} file(s) OK", flush=True)
+        # print(f"[STARTUP] sync_tables: restored {len(table_files)} file(s) OK", flush=True)
     except Exception as e:
-        print(f"[STARTUP] sync_tables: FAILED — {e}", flush=True)
+        # print(f"[STARTUP] sync_tables: FAILED — {e}", flush=True)
         logger.warning(f"HF Hub tables sync failed: {e}")
 
 
@@ -367,11 +367,11 @@ vs = VectorStoreManager(persist_dir=VECTORSTORE_DIR)
 _vs_chunks = vs.total_chunks()
 _vs_sources = vs.list_sources()
 _data_files = [f.name for f in Path(DATA_DIR).iterdir() if f.suffix.lower() in SUPPORTED_EXTENSIONS]
-print(
-    f"[STARTUP] VS loaded: {_vs_chunks} chunks, {len(_vs_sources)} source(s): {_vs_sources}",
-    flush=True,
-)
-print(f"[STARTUP] DATA_DIR files: {_data_files}", flush=True)
+# print(
+#     f"[STARTUP] VS loaded: {_vs_chunks} chunks, {len(_vs_sources)} source(s): {_vs_sources}",
+#     flush=True,
+# )
+# print(f"[STARTUP] DATA_DIR files: {_data_files}", flush=True)
 rag = RAGEngine(vector_store=vs, model=OLLAMA_MODEL)
 memory = ConversationMemory()
 ts = TableStore()
@@ -552,7 +552,7 @@ async def startup_event():
                 push_vectorstore_to_hf_hub()
 
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _index_missing_files)
+    # loop.run_in_executor(None, _index_missing_files)  # Disabled: do not auto-index data/ on startup
     loop.run_in_executor(None, _backfill_tables)
     loop.run_in_executor(None, _backfill_images)
     logger.info("HTTP server ready.")
@@ -826,16 +826,6 @@ async def url_crawl_status(url: str):
     return job
 
 
-@app.post("/documents/reindex")
-async def reindex_all():
-    """Force re-index all documents in data dir."""
-    for fp in Path(DATA_DIR).iterdir():
-        if fp.suffix.lower() in SUPPORTED_EXTENSIONS:
-            try:
-                index_file(str(fp))
-            except Exception as e:
-                logger.error(f"Reindex failed for {fp.name}: {e}")
-    return {"message": "Reindexed all documents.", "total_chunks": vs.total_chunks()}
 
 
 
