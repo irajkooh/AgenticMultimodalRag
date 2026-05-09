@@ -41,11 +41,11 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
 
 
 # HF Hub Dataset used for persistent user-uploaded file storage.
-# Set MultiModalRag_dataset ("irajkoohi/AgenticMultiModalRag_dataset") and MultiModalRag_Token as Space secrets.
+# Set MultiModalRag_dataset ("irajkoohi/AgenticMultiModalRag_dataset") and AgenticMultiModalRag_Token as Space secrets.
 # Files uploaded via the app are pushed here and re-downloaded on every cold start,
 # so they survive container restarts and redeployments.
 HF_DATASET_REPO = os.environ.get("MultiModalRag_dataset", "irajkoohi/AgenticMultiModalRag_dataset")
-HF_TOKEN = os.environ.get("MultiModalRag_Token", "")
+HF_TOKEN = os.environ.get("AgenticMultiModalRag_Token", "")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(VECTORSTORE_DIR, exist_ok=True)
