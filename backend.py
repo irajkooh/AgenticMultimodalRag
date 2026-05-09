@@ -58,8 +58,8 @@ def _hf_api():
 
 
 def sync_from_hf_hub():
-    """Download user-uploaded files from HF Hub dataset to data dir on startup.
-    Only downloads files that don't already exist locally (committed files win).
+    """Download ALL user-uploaded files from HF Hub dataset to data dir on startup.
+    Clears the data dir and overwrites with files from the dataset repo only.
     """
     api = _hf_api()
     if not api:
@@ -67,16 +67,19 @@ def sync_from_hf_hub():
         return
     try:
         import huggingface_hub
+        # Clear the data directory
+        for f in Path(DATA_DIR).glob("*"):
+            if f.is_file():
+                f.unlink()
+            elif f.is_dir():
+                shutil.rmtree(f)
         files = list(api.list_repo_files(HF_DATASET_REPO, repo_type="dataset"))
-        data_files = [f for f in files if f.startswith("data/") and
-                      Path(f).suffix.lower() in SUPPORTED_EXTENSIONS and Path(f).name]
+        data_files = [f for f in files if f.startswith("data/") and Path(f).suffix.lower() in SUPPORTED_EXTENSIONS and Path(f).name]
         print(f"[STARTUP] sync_data: {len(data_files)} supported file(s) in HF Hub", flush=True)
         downloaded_count = 0
         for path_in_repo in data_files:
             basename = Path(path_in_repo).name
             local_path = Path(DATA_DIR) / basename
-            if local_path.exists():
-                continue
             dl = huggingface_hub.hf_hub_download(
                 repo_id=HF_DATASET_REPO,
                 filename=path_in_repo,
@@ -86,7 +89,7 @@ def sync_from_hf_hub():
             shutil.copy2(dl, str(local_path))
             downloaded_count += 1
             print(f"[STARTUP] sync_data: downloaded '{basename}'", flush=True)
-        print(f"[STARTUP] sync_data: {downloaded_count} new file(s) downloaded", flush=True)
+        print(f"[STARTUP] sync_data: {downloaded_count} file(s) downloaded from HF dataset", flush=True)
     except Exception as e:
         print(f"[STARTUP] sync_data: FAILED — {e}", flush=True)
         logger.warning(f"HF Hub sync (download) failed: {e}")
