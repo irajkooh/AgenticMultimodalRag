@@ -24,7 +24,7 @@ class LLMTool:
         from utils.rag_engine import BACKEND, DEFAULT_HF_MODEL
         self._backend = BACKEND
         self._default_hf_model = DEFAULT_HF_MODEL
-        self._hf_token = os.environ.get("HF_TOKEN") or os.environ.get("MultiModalRag_Token", "")
+        self._hf_token = os.environ.get("HF_TOKEN") or os.environ.get("AgenticMultiModalRag_Token", "")
 
     def call(self, messages: list, max_tokens: int = 512) -> str:
         """Synchronous LLM call. Returns the response text.

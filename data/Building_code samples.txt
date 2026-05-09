@@ -1,0 +1,70 @@
+
+
+#### 2010-design-standards.pdf
+https://www.ada.gov/law-and-regs/design-standards/2010-stds/
+
+#### 2024 IBC.pdf
+chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/https://www.pinetoplakesideaz.gov/DocumentCenter/View/3717/2024-IBC
+
+#### Significant Changes to the International Codes (PDF).pdf
+chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/https://content.civicplus.com/api/assets/95754205-2fa5-47dc-b23e-d8d00be75d71?cache=1800
+
+#### ASCE 7-05.pdf
+chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/https://fluxus.cca.edu/~bbeazley/extreme-structures/links/ASCE%207-05.pdf
+
+
+What is the maximum rise and minimum run for stair treads?
+How many exits are required for a building with an occupant load over 500?
+What are the smoke detector placement requirements in a residential unit?
+How far apart must handrails be on a stairway?
+What is the maximum slope for a accessible ramp?
+What are the requirements for fire sprinkler systems in high-rise buildings?
+
+What is the minimum ceiling height for a habitable room?
+What are the egress window requirements for a bedroom?
+What is the required fire resistance rating for exterior walls?
+What is the minimum width of a corridor in a commercial building?
+what are the steps according to building code to design a ramp?
+
+
+https://codes.iccsafe.org/codes/irc
+https://codes.iccsafe.org/content/CHIBC2019P1
+https://codes.iccsafe.org/codes/chicago
+https://codes.iccsafe.org/codes/iecc
+https://codes.iccsafe.org/codes/chicago
+
+https://codes.iccsafe.org/content/IBC2024P1
+
+
+
+##### sample questions:
+how to install postgresql?
+create a cover letter for tella for lead architect position
+
+what is the total price of sold apples by william?
+what is the total sales of all items for william?
+what is the total sales of all sellers in 1/2/2022?
+what is the max, min, and avg values in column credit?
+what is the max, min, and avg credit, and balance?
+what are spendings in march 2026?
+how much i paid for grocery in march?
+how much i paid for grocery in april?
+
+####################################################
+Gror's Error:
+Error: 402 Client Error: Payment Required for url: https://router.huggingface.co/novita/v3/openai/chat/completions (Request ID: Root=1-69fd387c-648e5ad31d07898b025aaa7d;c90a160d-db1d-4faa-9301-1ff7070db91f)
+
+You have depleted your monthly included credits. Purchase pre-paid credits to continue using Inference Providers. Alternatively, subscribe to PRO to get 20x more included usage.
+
+🔍 Answer retrieved from document chunks (8 chunks)
+📄 Sources: 2010-design-standards.pdf, 2024 IBC.pdf
+
+##### On Groq's free tier there are two limits:
+
+RPM (requests per minute) — resets in seconds to ~1 minute
+Daily token limit (100K/day) — resets at midnight UTC
+If you only see the error occasionally and other questions work fine right after, it's RPM throttling — just wait 10–30 seconds and retry.
+
+If every question fails consistently, you've hit the daily 100K token cap — wait until midnight UTC (that's when the counter resets).
+
+You can check your actual usage at console.groq.com/settings/limits.
