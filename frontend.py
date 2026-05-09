@@ -614,14 +614,24 @@ flowchart TD
               delete_btn     = gr.Button("🗑 Remove selected", elem_id="delete-btn")
               delete_all_btn = gr.Button("🗑 Remove ALL",      elem_id="delete-all-btn")
               refresh_btn    = gr.Button("↻ Refresh list",    elem_id="refresh-btn")
-              reextract_btn  = gr.Button("⚙ Re-extract tables & images", elem_id="reextract-btn")
+              reextract_btn  = gr.Button("⚙ Re-extract tables & images", elem_id="reextract-btn", scale=0, min_width=120, max_width=140)
+              debug_toggle   = gr.Checkbox(label="Show Debug Info", value=False, elem_id="debug-toggle", scale=0, min_width=90, max_width=120)
             # Confirmation row for Remove ALL
             with gr.Row(visible=False) as confirm_row:
               gr.Markdown('<span style="font-size:0.95em;color:#f87171;">⚠️ Remove ALL embeddings? This cannot be undone.</span>')
               confirm_yes_btn = gr.Button("✔ Yes, remove all", elem_id="confirm-yes-btn")
               confirm_no_btn  = gr.Button("✖ Cancel",          elem_id="confirm-no-btn")
-            debug_toggle = gr.Checkbox(label="Show Debug Info", value=False, elem_id="debug-toggle")
             debug_out = gr.HTML(value="", elem_id="debug-out")
+  # Re-extract and debug toggle row
+  # Make re-extract button compact
+  # Make debug toggle compact and right-aligned
+  # Both on same row
+  # Use !important to override Gradio defaults
+  #
+  # Re-extract button
+  #reextract-btn { min-width: 110px !important; max-width: 140px !important; font-size: 0.95em !important; padding: 2px 8px !important; }
+  # Debug toggle
+  #debug-toggle { min-width: 90px !important; max-width: 120px !important; margin-left: 8px !important; vertical-align: middle !important; }
 
 
 
