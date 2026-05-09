@@ -355,11 +355,16 @@ def _extract_text(content):
 
 def get_last_answer(history):
     if not history:
-        return ""
+      return ""
     last = history[-1]
     if isinstance(last, dict):
-        return _extract_text(last.get("content", "")) if last.get("role") == "assistant" else ""
-    return _extract_text(last[1]) if last[1] else ""
+      text = _extract_text(last.get("content", "")) if last.get("role") == "assistant" else ""
+    else:
+      text = _extract_text(last[1]) if last[1] else ""
+    # Remove debug info from copied answer
+    if text:
+      text = _re.sub(r"\n*---\n<details><summary>Debug Info</summary>.*?</details>", "", text, flags=_re.DOTALL)
+    return text
 
 
 def format_chat_history(history):
@@ -367,14 +372,17 @@ def format_chat_history(history):
         return ""
     lines = []
     for msg in history:
-        if isinstance(msg, dict):
-            role = "User" if msg.get("role") == "user" else "Assistant"
-            content = _extract_text(msg.get("content", ""))
-        else:
-            role = "User" if msg[0] else "Assistant"
-            content = _extract_text(msg[0] or msg[1] or "")
-        if content:
-            lines.append(f"{role}: {content}")
+      if isinstance(msg, dict):
+        role = "User" if msg.get("role") == "user" else "Assistant"
+        content = _extract_text(msg.get("content", ""))
+      else:
+        role = "User" if msg[0] else "Assistant"
+        content = _extract_text(msg[0] or msg[1] or "")
+      # Remove debug info from copied content
+      if content and role == "Assistant":
+        content = _re.sub(r"\n*---\n<details><summary>Debug Info</summary>.*?</details>", "", content, flags=_re.DOTALL)
+      if content:
+        lines.append(f"{role}: {content}")
     return "\n\n".join(lines)
 
 
@@ -929,9 +937,9 @@ flowchart TD
         inputs=[],
         outputs=[status_text],
       )
-        def toggle_debug_info(show):
+      def toggle_debug_info(show):
           return get_debug_info() if show else ""
-        debug_toggle.change(fn=toggle_debug_info, inputs=[debug_toggle], outputs=[debug_out])
+      debug_toggle.change(fn=toggle_debug_info, inputs=[debug_toggle], outputs=[debug_out])
 
       # Always update state when user changes selection
       doc_list.change(
