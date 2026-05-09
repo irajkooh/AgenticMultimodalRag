@@ -37,11 +37,11 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
 
 
 # HF Hub Dataset used for persistent user-uploaded file storage.
-# Set MultiModalRag_dataset ("irajkoohi/AgenticMultiModalRag_dataset") and AgenticMultiModalRag_Token as Space secrets.
+# Set MultiModalRag_dataset ("irajkoohi/AgenticMultiModalRag_dataset") and MultiModalRag_Token as Space secrets.
 # Files uploaded via the app are pushed here and re-downloaded on every cold start,
 # so they survive container restarts and redeployments.
 HF_DATASET_REPO = os.environ.get("MultiModalRag_dataset", "irajkoohi/AgenticMultiModalRag_dataset")
-HF_TOKEN = os.environ.get("AgenticMultiModalRag_Token", "")
+HF_TOKEN = os.environ.get("MultiModalRag_Token", "")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(VECTORSTORE_DIR, exist_ok=True)
@@ -58,21 +58,8 @@ def _hf_api():
 
 
 def sync_from_hf_hub():
-    # ─── Sync job tracker ──────────────────────────────────────────────
-    global _sync_status
-    _sync_status = {
-        "status": "processing",
-        "phase": "starting",
-        "current": 0,
-        "total": 0,
-        "file": None,
-        "files": [],
-        "message": "",
-        "done": False,
-        "error": None,
-    }
-    """Download ALL user-uploaded files from HF Hub dataset to data dir on startup.
-    Clears the data dir and overwrites with files from the dataset repo only.
+    """Download user-uploaded files from HF Hub dataset to data dir on startup.
+    Only downloads files that don't already exist locally (committed files win).
     """
     api = _hf_api()
     if not api:
@@ -80,56 +67,26 @@ def sync_from_hf_hub():
         return
     try:
         import huggingface_hub
-        # Clear the data directory
-        for f in Path(DATA_DIR).glob("*"):
-            if f.is_file():
-                f.unlink()
-            elif f.is_dir():
-                shutil.rmtree(f)
         files = list(api.list_repo_files(HF_DATASET_REPO, repo_type="dataset"))
-        data_files = [f for f in files if f.startswith("data/") and Path(f).suffix.lower() in SUPPORTED_EXTENSIONS and Path(f).name]
+        data_files = [f for f in files if f.startswith("data/") and
+                      Path(f).suffix.lower() in SUPPORTED_EXTENSIONS and Path(f).name]
         print(f"[STARTUP] sync_data: {len(data_files)} supported file(s) in HF Hub", flush=True)
         downloaded_count = 0
-        total_files = len(data_files)
-        _sync_status["total"] = total_files
-        _sync_status["files"] = [Path(f).name for f in data_files]
-        for idx, path_in_repo in enumerate(data_files, 1):
+        for path_in_repo in data_files:
             basename = Path(path_in_repo).name
             local_path = Path(DATA_DIR) / basename
-            _sync_status["current"] = idx
-            _sync_status["file"] = basename
-            _sync_status["phase"] = f"downloading {basename} ({idx}/{total_files})"
-            _sync_status["message"] = f"Downloading {basename} ({idx}/{total_files})"
-            print(f"[STARTUP] sync_data: [{idx}/{total_files}] Downloading '{basename}'...", flush=True)
-            try:
-                dl = huggingface_hub.hf_hub_download(
-                    repo_id=HF_DATASET_REPO,
-                    filename=path_in_repo,
-                    repo_type="dataset",
-                    token=HF_TOKEN,
-                )
-                shutil.copy2(dl, str(local_path))
-                downloaded_count += 1
-                _sync_status["phase"] = f"downloaded {basename} ({idx}/{total_files})"
-                _sync_status["message"] = f"Downloaded {basename} ({idx}/{total_files})"
-                print(f"[STARTUP] sync_data: [{idx}/{total_files}] Downloaded '{basename}'", flush=True)
-            except Exception as e:
-                _sync_status["phase"] = f"error downloading {basename}"
-                _sync_status["error"] = str(e)
-                _sync_status["status"] = "error"
-                print(f"[STARTUP] sync_data: FAILED to download '{basename}': {e}", flush=True)
-        _sync_status["status"] = "done"
-        _sync_status["done"] = True
-        _sync_status["phase"] = "complete"
-        _sync_status["message"] = f"{downloaded_count} file(s) downloaded from HF dataset"
-        print(f"[STARTUP] sync_data: {downloaded_count} file(s) downloaded from HF dataset", flush=True)
-    @app.get("/sync/status")
-    async def sync_status():
-        """Poll the status of the startup sync from HF dataset."""
-        global _sync_status
-        if "_sync_status" not in globals():
-            return {"status": "not-started", "phase": "not-started", "done": False}
-        return _sync_status
+            if local_path.exists():
+                continue
+            dl = huggingface_hub.hf_hub_download(
+                repo_id=HF_DATASET_REPO,
+                filename=path_in_repo,
+                repo_type="dataset",
+                token=HF_TOKEN,
+            )
+            shutil.copy2(dl, str(local_path))
+            downloaded_count += 1
+            print(f"[STARTUP] sync_data: downloaded '{basename}'", flush=True)
+        print(f"[STARTUP] sync_data: {downloaded_count} new file(s) downloaded", flush=True)
     except Exception as e:
         print(f"[STARTUP] sync_data: FAILED — {e}", flush=True)
         logger.warning(f"HF Hub sync (download) failed: {e}")
@@ -869,18 +826,6 @@ async def reindex_all():
 async def query_documents(req: QueryRequest):
     """Query the RAG system."""
     try:
-        # Check if there are any documents indexed
-        if vs.total_chunks() == 0 or not vs.list_sources():
-            return QueryResponse(
-                answer="No documents are available in the database. Please upload documents first.",
-                sources=[],
-                tokens_user=estimate_tokens(req.question),
-                tokens_assistant=0,
-                chunks_used=0,
-                sql_query=None,
-                answer_method="none",
-            )
-
         def _run_query():
             result = supervisor.handle(
                 req.question,
@@ -905,7 +850,7 @@ async def query_documents(req: QueryRequest):
         )
     except Exception as e:
         logger.error(f"Query endpoint error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error. Please check if documents are uploaded and indexed.")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/memory/clear")
