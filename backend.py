@@ -77,9 +77,11 @@ def sync_from_hf_hub():
         data_files = [f for f in files if f.startswith("data/") and Path(f).suffix.lower() in SUPPORTED_EXTENSIONS and Path(f).name]
         print(f"[STARTUP] sync_data: {len(data_files)} supported file(s) in HF Hub", flush=True)
         downloaded_count = 0
-        for path_in_repo in data_files:
+        total_files = len(data_files)
+        for idx, path_in_repo in enumerate(data_files, 1):
             basename = Path(path_in_repo).name
             local_path = Path(DATA_DIR) / basename
+            print(f"[STARTUP] sync_data: [{idx}/{total_files}] Downloading '{basename}'...", flush=True)
             dl = huggingface_hub.hf_hub_download(
                 repo_id=HF_DATASET_REPO,
                 filename=path_in_repo,
@@ -88,7 +90,7 @@ def sync_from_hf_hub():
             )
             shutil.copy2(dl, str(local_path))
             downloaded_count += 1
-            print(f"[STARTUP] sync_data: downloaded '{basename}'", flush=True)
+            print(f"[STARTUP] sync_data: [{idx}/{total_files}] Downloaded '{basename}'", flush=True)
         print(f"[STARTUP] sync_data: {downloaded_count} file(s) downloaded from HF dataset", flush=True)
     except Exception as e:
         print(f"[STARTUP] sync_data: FAILED — {e}", flush=True)
