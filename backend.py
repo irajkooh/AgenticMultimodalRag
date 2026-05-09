@@ -829,6 +829,18 @@ async def reindex_all():
 async def query_documents(req: QueryRequest):
     """Query the RAG system."""
     try:
+        # Check if there are any documents indexed
+        if vs.total_chunks() == 0 or not vs.list_sources():
+            return QueryResponse(
+                answer="No documents are available in the database. Please upload documents first.",
+                sources=[],
+                tokens_user=estimate_tokens(req.question),
+                tokens_assistant=0,
+                chunks_used=0,
+                sql_query=None,
+                answer_method="none",
+            )
+
         def _run_query():
             result = supervisor.handle(
                 req.question,
@@ -853,7 +865,7 @@ async def query_documents(req: QueryRequest):
         )
     except Exception as e:
         logger.error(f"Query endpoint error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error. Please check if documents are uploaded and indexed.")
 
 
 @app.post("/memory/clear")
