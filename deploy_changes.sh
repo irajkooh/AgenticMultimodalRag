@@ -85,7 +85,6 @@ git push origin main
 # PDFs/DOCX/PNGs are excluded from the Space rsync (no Git LFS support).
 # Uploading them here ensures sync_from_hf_hub() can download them on Space startup.
 echo "▶ Syncing data files to HF Hub dataset (upload new + delete removed)..."
-token = os.environ.get("MultiModalRag_Token", "").strip()
 python3 - <<'PYEOF'
 import os, sys, re
 from pathlib import Path
