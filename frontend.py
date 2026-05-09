@@ -610,12 +610,12 @@ flowchart TD
               interactive=True,
             )
             doc_list_state = gr.State([])
-            with gr.Row():
+            with gr.Row(elem_id="doc-action-row"):
               delete_btn     = gr.Button("🗑 Remove selected", elem_id="delete-btn")
               delete_all_btn = gr.Button("🗑 Remove ALL",      elem_id="delete-all-btn")
               refresh_btn    = gr.Button("↻ Refresh list",    elem_id="refresh-btn")
-              reextract_btn  = gr.Button("⚙ Re-extract tables & images", elem_id="reextract-btn", scale=0, min_width=120, max_width=140)
-              debug_toggle   = gr.Checkbox(label="Show Debug Info", value=False, elem_id="debug-toggle", scale=0, min_width=90, max_width=120)
+              reextract_btn  = gr.Button("⚙ Re-extract", elem_id="reextract-btn")
+              debug_toggle   = gr.Checkbox(label="Show Debug Info", value=False, elem_id="debug-toggle")
             # Confirmation row for Remove ALL
             with gr.Row(visible=False) as confirm_row:
               gr.Markdown('<span style="font-size:0.95em;color:#f87171;">⚠️ Remove ALL embeddings? This cannot be undone.</span>')
@@ -681,68 +681,91 @@ flowchart TD
           }, 30000);
       }"""
       demo.load(fn=None, js=_JS_KEEPALIVE)
-      _JS_LOAD_MERMAID = """() => {
-          if (window.mermaid) return;
-          var s = document.createElement('script');
-          s.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
-          s.onload = function() { mermaid.initialize({startOnLoad:false, theme:'dark'}); };
-          document.head.appendChild(s);
-      }"""
-      demo.load(fn=None, js=_JS_LOAD_MERMAID)
-
-      def _apply_filter(pattern: str):
-          docs, *_ = get_status()
-          docs = docs or []
-          if not pattern or not pattern.strip():
-              return gr.update(choices=docs, value=[])
-          matched = []
-          for pat in pattern.split():
-              matched.extend(fnmatch.filter(docs, pat))
-          matched = list(dict.fromkeys(matched))  # dedupe, preserve order
-          return gr.update(choices=docs, value=matched)
-
-      filter_pattern_tb.submit(fn=_apply_filter, inputs=[filter_pattern_tb], outputs=[source_filter_dd])
-
-      demo.load(
-          fn=None,
-          js="""() => { setTimeout(function(){ window.scrollTo(0, 0); }, 200); }"""
-      )
-      demo.load(
-          fn=None,
-          js="""() => {
-              // ── 0. Inject CSS for user bubbles ──
-              var _css = document.createElement('style');
-              _css.textContent = ''
-                  + '.chatbot-wrap .message-row:not(.bot-row) .message-bubble,'
-                  + '.chatbot-wrap .message-row:not(.bot-row) .bubble-wrap > *,'
-                  + '.chatbot-wrap [data-testid="user"] > div,'
-                  + '.chatbot-wrap .role-user .message,'
-                  + '.chatbot-wrap .user-row .message-bubble'
-                  + ' { background:#3b82f6!important; color:#000!important; border-radius:12px!important; }'
-                  + '.chatbot-wrap .message-row:not(.bot-row) .message-bubble p,'
-                  + '.chatbot-wrap .message-row:not(.bot-row) .message-bubble span,'
-                  + '.chatbot-wrap .message-row:not(.bot-row) .prose,'
-                  + '.chatbot-wrap .message-row:not(.bot-row) .prose p,'
-                  + '.chatbot-wrap [data-testid="user"] p,'
-                  + '.chatbot-wrap .role-user p,'
-                  + '.chatbot-wrap .user-row p,'
-                  + '.chatbot-wrap .user-row span'
-                  + ' { color:#000!important; }';
-              document.head.appendChild(_css);
-
-              // ── 1. Button gradient colors ──
-              var READ_BLUE  = {bg:'linear-gradient(135deg,#2563eb 0%,#60a5fa 100%)', sh:'0 4px 16px rgba(37,99,235,0.55)'};
-              var READ_ORANGE = {bg:'linear-gradient(135deg,#ea580c 0%,#fb923c 100%)', sh:'0 4px 18px rgba(234,88,12,0.6)'};
-              var STYLE_RULES = [
-                  { id:'ask-btn',       bg:'linear-gradient(135deg,#7c5cfc 0%,#a78bfa 100%)', sh:'0 4px 18px rgba(124,92,252,0.55)' },
-                  { id:'file-upload',   bg:'linear-gradient(135deg,#0ea5e9 0%,#38bdf8 100%)', sh:'0 4px 18px rgba(14,165,233,0.55)' },
-                  { id:'copy-btn',      bg:'linear-gradient(135deg,#059669 0%,#34d399 100%)', sh:'0 4px 16px rgba(5,150,105,0.5)' },
-                  { id:'clear-chat-btn',bg:'linear-gradient(135deg,#dc2626 0%,#f87171 100%)', sh:'0 4px 16px rgba(220,38,38,0.5)' },
-                  { id:'delete-btn',    bg:'linear-gradient(135deg,#ef4444 0%,#fca5a5 100%)', sh:'0 4px 16px rgba(239,68,68,0.5)' },
-                  { id:'delete-all-btn',bg:'linear-gradient(135deg,#7f1d1d 0%,#b91c1c 100%)', sh:'0 4px 18px rgba(127,29,29,0.65)' },
-                  { id:'confirm-yes-btn',bg:'linear-gradient(135deg,#7f1d1d 0%,#b91c1c 100%)',sh:'0 4px 18px rgba(127,29,29,0.65)' },
-                  { id:'confirm-no-btn',bg:'linear-gradient(135deg,#374151 0%,#6b7280 100%)', sh:'0 2px 10px rgba(107,114,128,0.4)' },
-                  { id:'refresh-btn',   bg:'linear-gradient(135deg,#4338ca 0%,#818cf8 100%)', sh:'0 4px 16px rgba(67,56,202,0.5)' },
+      _UI_CSS = """
+        .main-col  { max-width: 900px; margin: 0 auto; }
+        /* Chat window — deep cosmic violet */
+        .chatbot-wrap { background: #16082e; border-radius: 12px; border: 1px solid #3d1a7a; }
+        .gradio-container { background: #10131a; }
+        /* Sample questions — deep midnight navy */
+        .sample-q-panel {
+          background: #071b2e !important;
+          border-radius: 12px !important;
+          padding: 10px 10px 6px 10px !important;
+          border: 1px solid #1a4d7a !important;
+        }
+        /* Search filter — deep crimson/burgundy */
+        .filter-panel {
+          background: #1c0810 !important;
+          border-radius: 12px !important;
+          padding: 10px !important;
+          border: 1px solid #6b1a2e !important;
+        }
+        .filter-panel .wrap {
+          max-height: 72px !important;
+          overflow-y: auto !important;
+          flex-wrap: wrap !important;
+        }
+        .filter-panel .wrap::-webkit-scrollbar { width: 4px; }
+        .filter-panel .wrap::-webkit-scrollbar-track { background: #1c0810; }
+        .filter-panel .wrap::-webkit-scrollbar-thumb { background: #6b1a2e; border-radius: 4px; }
+        #thinking-indicator { display: none !important; }
+        /* Question box — deep forest emerald */
+        #chat-input-wrap {
+          position: relative !important;
+          background: #061c10 !important;
+          border-radius: 10px !important;
+          border: 1px solid #1a6b3d !important;
+          padding: 6px !important;
+        }
+        #chat-input-wrap textarea {
+          background: #061c10 !important;
+          color: #e2e8f0 !important;
+        }
+        #ask-btn { width: 52px !important; min-width: 52px !important; max-width: 52px !important; padding: 0 !important; aspect-ratio: 1; }
+        .sample-q-btn button {
+          font-size: 0.75em !important;
+          padding: 5px 10px !important;
+          border-radius: 14px !important;
+          border: 1px solid #1a3a5c !important;
+          background: #0a2540 !important;
+          color: #94a3b8 !important;
+          white-space: normal !important;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          min-height: unset !important;
+          height: auto !important;
+          width: 100% !important;
+          text-align: left !important;
+        }
+        .sample-q-btn button:hover {
+          background: #0e3460 !important;
+          border-color: #3b82f6 !important;
+          color: #e2e8f0 !important;
+        }
+        /* Document action row: fit all buttons in one row, compact */
+        #doc-action-row { gap: 6px !important; flex-wrap: nowrap !important; }
+        #doc-action-row .gr-button, #doc-action-row button, #doc-action-row label {
+          min-width: 90px !important;
+          max-width: 120px !important;
+          font-size: 0.93em !important;
+          padding: 2px 8px !important;
+          height: 32px !important;
+          line-height: 1.1 !important;
+          white-space: nowrap !important;
+        }
+        #reextract-btn { min-width: 90px !important; max-width: 120px !important; }
+        #debug-toggle { min-width: 90px !important; max-width: 120px !important; margin-left: 4px !important; vertical-align: middle !important; }
+        @media (max-width: 700px) {
+          #doc-action-row { flex-wrap: wrap !important; }
+          #doc-action-row .gr-button, #doc-action-row button, #doc-action-row label {
+          min-width: 80px !important;
+          max-width: 100px !important;
+          font-size: 0.88em !important;
+          padding: 2px 4px !important;
+          height: 28px !important;
+          }
+        }
+      """
                   { id:'add-url-btn',   bg:'linear-gradient(135deg,#0d9488 0%,#2dd4bf 100%)', sh:'0 4px 16px rgba(13,148,136,0.5)' },
                   { id:'read-btn',      bg:READ_BLUE.bg, sh:READ_BLUE.sh },
               ];
