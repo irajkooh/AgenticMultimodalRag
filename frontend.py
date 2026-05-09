@@ -612,7 +612,7 @@ flowchart TD
               gr.Markdown('<span style="font-size:0.95em;color:#f87171;">⚠️ Remove ALL embeddings? This cannot be undone.</span>')
               confirm_yes_btn = gr.Button("✔ Yes, remove all", elem_id="confirm-yes-btn")
               confirm_no_btn  = gr.Button("✖ Cancel",          elem_id="confirm-no-btn")
-            debug_btn = gr.Button("🔍 Debug Info", elem_id="debug-btn")
+            debug_toggle = gr.Checkbox(label="Show Debug Info", value=False, elem_id="debug-toggle")
             debug_out = gr.HTML(value="", elem_id="debug-out")
 
 
@@ -929,7 +929,9 @@ flowchart TD
         inputs=[],
         outputs=[status_text],
       )
-      debug_btn.click(fn=get_debug_info, outputs=[debug_out])
+        def toggle_debug_info(show):
+          return get_debug_info() if show else ""
+        debug_toggle.change(fn=toggle_debug_info, inputs=[debug_toggle], outputs=[debug_out])
 
       # Always update state when user changes selection
       doc_list.change(
