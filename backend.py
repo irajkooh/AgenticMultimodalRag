@@ -58,6 +58,19 @@ def _hf_api():
 
 
 def sync_from_hf_hub():
+    # ─── Sync job tracker ──────────────────────────────────────────────
+    global _sync_status
+    _sync_status = {
+        "status": "processing",
+        "phase": "starting",
+        "current": 0,
+        "total": 0,
+        "file": None,
+        "files": [],
+        "message": "",
+        "done": False,
+        "error": None,
+    }
     """Download ALL user-uploaded files from HF Hub dataset to data dir on startup.
     Clears the data dir and overwrites with files from the dataset repo only.
     """
@@ -78,20 +91,45 @@ def sync_from_hf_hub():
         print(f"[STARTUP] sync_data: {len(data_files)} supported file(s) in HF Hub", flush=True)
         downloaded_count = 0
         total_files = len(data_files)
+        _sync_status["total"] = total_files
+        _sync_status["files"] = [Path(f).name for f in data_files]
         for idx, path_in_repo in enumerate(data_files, 1):
             basename = Path(path_in_repo).name
             local_path = Path(DATA_DIR) / basename
+            _sync_status["current"] = idx
+            _sync_status["file"] = basename
+            _sync_status["phase"] = f"downloading {basename} ({idx}/{total_files})"
+            _sync_status["message"] = f"Downloading {basename} ({idx}/{total_files})"
             print(f"[STARTUP] sync_data: [{idx}/{total_files}] Downloading '{basename}'...", flush=True)
-            dl = huggingface_hub.hf_hub_download(
-                repo_id=HF_DATASET_REPO,
-                filename=path_in_repo,
-                repo_type="dataset",
-                token=HF_TOKEN,
-            )
-            shutil.copy2(dl, str(local_path))
-            downloaded_count += 1
-            print(f"[STARTUP] sync_data: [{idx}/{total_files}] Downloaded '{basename}'", flush=True)
+            try:
+                dl = huggingface_hub.hf_hub_download(
+                    repo_id=HF_DATASET_REPO,
+                    filename=path_in_repo,
+                    repo_type="dataset",
+                    token=HF_TOKEN,
+                )
+                shutil.copy2(dl, str(local_path))
+                downloaded_count += 1
+                _sync_status["phase"] = f"downloaded {basename} ({idx}/{total_files})"
+                _sync_status["message"] = f"Downloaded {basename} ({idx}/{total_files})"
+                print(f"[STARTUP] sync_data: [{idx}/{total_files}] Downloaded '{basename}'", flush=True)
+            except Exception as e:
+                _sync_status["phase"] = f"error downloading {basename}"
+                _sync_status["error"] = str(e)
+                _sync_status["status"] = "error"
+                print(f"[STARTUP] sync_data: FAILED to download '{basename}': {e}", flush=True)
+        _sync_status["status"] = "done"
+        _sync_status["done"] = True
+        _sync_status["phase"] = "complete"
+        _sync_status["message"] = f"{downloaded_count} file(s) downloaded from HF dataset"
         print(f"[STARTUP] sync_data: {downloaded_count} file(s) downloaded from HF dataset", flush=True)
+    @app.get("/sync/status")
+    async def sync_status():
+        """Poll the status of the startup sync from HF dataset."""
+        global _sync_status
+        if "_sync_status" not in globals():
+            return {"status": "not-started", "phase": "not-started", "done": False}
+        return _sync_status
     except Exception as e:
         print(f"[STARTUP] sync_data: FAILED — {e}", flush=True)
         logger.warning(f"HF Hub sync (download) failed: {e}")
