@@ -1,3 +1,17 @@
+# ─── Sync Progress API Endpoints ───────────────────────────────────────────
+from fastapi import APIRouter
+
+@app.post("/sync/start")
+async def start_sync_from_hf_hub():
+    """Trigger sync from HF Hub dataset with progress tracking."""
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, sync_from_hf_hub_with_progress)
+    return {"message": "Sync started"}
+
+@app.get("/sync/progress")
+async def sync_progress():
+    """Get current sync progress."""
+    return get_sync_progress()
 """
 FastAPI backend for the Multimodal RAG system.
 Exposes endpoints for document management and querying.
@@ -57,22 +71,29 @@ def _hf_api():
     return None
 
 
-def sync_from_hf_hub():
-    """Download user-uploaded files from HF Hub dataset to data dir on startup.
-    Only downloads files that don't already exist locally (committed files win).
-    """
+
+# ─── Sync Progress Tracker ─────────────────────────────────────────────
+_sync_progress = {"status": "idle", "current": 0, "total": 0, "message": ""}
+_sync_lock = threading.Lock()
+
+def sync_from_hf_hub_with_progress():
+    """Download user-uploaded files from HF Hub dataset to data dir, with progress tracking."""
     api = _hf_api()
     if not api:
-        print("[STARTUP] sync_data: SKIPPED — HF_DATASET_REPO or HF_TOKEN not set", flush=True)
+        with _sync_lock:
+            _sync_progress.update({"status": "error", "message": "HF_DATASET_REPO or HF_TOKEN not set"})
         return
     try:
         import huggingface_hub
+        with _sync_lock:
+            _sync_progress.update({"status": "listing", "message": "Listing files...", "current": 0, "total": 0})
         files = list(api.list_repo_files(HF_DATASET_REPO, repo_type="dataset"))
-        data_files = [f for f in files if f.startswith("data/") and
-                      Path(f).suffix.lower() in SUPPORTED_EXTENSIONS and Path(f).name]
-        print(f"[STARTUP] sync_data: {len(data_files)} supported file(s) in HF Hub", flush=True)
+        data_files = [f for f in files if f.startswith("data/") and Path(f).suffix.lower() in SUPPORTED_EXTENSIONS and Path(f).name]
+        total = len(data_files)
+        with _sync_lock:
+            _sync_progress.update({"status": "downloading", "message": f"Downloading {total} files...", "current": 0, "total": total})
         downloaded_count = 0
-        for path_in_repo in data_files:
+        for idx, path_in_repo in enumerate(data_files, 1):
             basename = Path(path_in_repo).name
             local_path = Path(DATA_DIR) / basename
             if local_path.exists():
@@ -85,11 +106,18 @@ def sync_from_hf_hub():
             )
             shutil.copy2(dl, str(local_path))
             downloaded_count += 1
-            print(f"[STARTUP] sync_data: downloaded '{basename}'", flush=True)
-        print(f"[STARTUP] sync_data: {downloaded_count} new file(s) downloaded", flush=True)
+            with _sync_lock:
+                _sync_progress.update({"status": "downloading", "message": f"Downloaded {idx}/{total}: {basename}", "current": idx, "total": total})
+        with _sync_lock:
+            _sync_progress.update({"status": "done", "message": f"Downloaded {downloaded_count} new file(s)", "current": total, "total": total})
     except Exception as e:
-        print(f"[STARTUP] sync_data: FAILED — {e}", flush=True)
-        logger.warning(f"HF Hub sync (download) failed: {e}")
+        with _sync_lock:
+            _sync_progress.update({"status": "error", "message": str(e)})
+
+
+def get_sync_progress():
+    with _sync_lock:
+        return dict(_sync_progress)
 
 
 def push_to_hf_hub(filename: str):
