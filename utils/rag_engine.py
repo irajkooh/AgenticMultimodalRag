@@ -90,19 +90,32 @@ class RAGEngine:
             self._client = _make_ollama_client()
             logger.info(f"LLM backend: Ollama ({self.model})")
 
+    @staticmethod
+    def _is_question_only(text: str) -> bool:
+        """True when a chunk is mostly a list of questions with no answer content."""
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        if len(lines) < 2:
+            return False
+        questions = sum(1 for l in lines if l.endswith("?"))
+        return questions / len(lines) >= 0.6
+
     def _build_context(self, results: List[Dict[str, Any]]) -> str:
         if not results:
             return "No relevant documents found."
         parts = []
-        for i, r in enumerate(results, 1):
+        idx = 1
+        for r in results:
+            if self._is_question_only(r["text"]):
+                continue
             meta = r["metadata"]
             source   = meta.get("source", "unknown")
             page     = meta.get("page", "")
             doc_type = meta.get("type", "text")
             page_str = f", Page {page}" if page else ""
             type_str = f" [{doc_type}]" if doc_type != "text" else ""
-            parts.append(f"[Doc {i} — {source}{page_str}{type_str}]\n{r['text']}")
-        return "\n\n---\n\n".join(parts)
+            parts.append(f"[Doc {idx} — {source}{page_str}{type_str}]\n{r['text']}")
+            idx += 1
+        return "\n\n---\n\n".join(parts) if parts else "No relevant documents found."
 
     def _build_messages(self, question: str, context: str, memory: ConversationMemory, extra_context: str = ""):
         if extra_context:
