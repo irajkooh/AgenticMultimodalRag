@@ -100,6 +100,26 @@ class RAGEngine:
         questions = sum(1 for l in lines if l.endswith("?"))
         return questions / len(lines) >= 0.6
 
+    @staticmethod
+    def _is_non_content_chunk(text: str) -> bool:
+        """True when a chunk is noise: URL lists, error logs, or markdown headers with no prose."""
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        if not lines:
+            return True
+        url_or_header = sum(
+            1 for l in lines
+            if l.startswith("http") or l.startswith("chrome-extension://")
+            or (l.startswith("#") and len(l.split()) <= 6)
+        )
+        if url_or_header / len(lines) >= 0.5:
+            return True
+        # Error/log lines (common patterns from Building_code samples.txt noise)
+        noise_keywords = ("402 client error", "payment required", "depleted", "rate limit", "token limit")
+        lowered = text.lower()
+        if any(kw in lowered for kw in noise_keywords):
+            return True
+        return False
+
     def _build_context(self, results: List[Dict[str, Any]]) -> str:
         if not results:
             return "No relevant documents found."
@@ -107,6 +127,8 @@ class RAGEngine:
         idx = 1
         for r in results:
             if self._is_question_only(r["text"]):
+                continue
+            if self._is_non_content_chunk(r["text"]):
                 continue
             meta = r["metadata"]
             source   = meta.get("source", "unknown")

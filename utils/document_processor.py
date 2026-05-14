@@ -365,6 +365,15 @@ def _img_table_is_useful(df) -> bool:
     """
     if len(df) < 2 or len(df.columns) < 2:
         return False
+
+    # Reject Excel column-header artifacts: first row is mostly None with single-char values (A, B, C...)
+    first_row = df.iloc[0].astype(str).str.strip()
+    none_mask = first_row.isin(["None", "nan", ""])
+    if none_mask.mean() > 0.55:
+        non_none = first_row[~none_mask]
+        if not non_none.empty and (non_none.str.len() == 1).any():
+            return False
+
     for col in df.columns:
         if pd.api.types.is_numeric_dtype(df[col]):
             return True
@@ -381,6 +390,9 @@ def _img_table_is_useful(df) -> bool:
         if len(non_empty) / max(len(df), 1) < 0.5:
             return False
         if non_empty.nunique() < 2:
+            return False
+        # Reject paragraph/resume text masquerading as table cells
+        if non_empty.str.len().mean() > 80:
             return False
     return True
 
