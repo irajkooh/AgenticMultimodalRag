@@ -30,7 +30,7 @@ class DocImageAgent:
         table_answer: SQL result to inject as extra context for hybrid queries.
         """
         if not source_filter:
-            results = self._vs_tool.search_per_source(question, n_per_source=2)
+            results = self._vs_tool.search_per_source(question, n_per_source=4)
         else:
             results = self._vs_tool.search(question, n_results=n_results, source_filter=source_filter)
 
@@ -45,6 +45,10 @@ class DocImageAgent:
 
         sources = list({r["metadata"].get("source", "") for r in source_chunks})
 
+        # Pass only relevance-filtered chunks to the LLM so irrelevant sources
+        # (e.g. reference txt files) don't pollute context.
+        llm_results = relevant if relevant else results
+
         parts = []
         for token in self._rag.query(
             question,
@@ -53,7 +57,7 @@ class DocImageAgent:
             temperature=temperature,
             stream=False,
             source_filter=source_filter,
-            pre_fetched_results=results,
+            pre_fetched_results=llm_results,
             extra_context=table_answer,
         ):
             parts.append(token)
