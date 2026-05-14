@@ -664,19 +664,34 @@ async def reextract_all():
         results = {}
         total = len(files)
         loop = asyncio.get_running_loop()
+
+        async def _keepalives(fut, interval: float = 20.0):
+            """Async generator: yield SSE keepalive comments every `interval` seconds until fut is done."""
+            while not fut.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(fut), timeout=interval)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+
         for i, f in enumerate(files):
             source_name = f.name
             tables_saved = 0
             images_saved = 0
             yield f"data: {json.dumps({'type': 'progress', 'file': source_name, 'index': i + 1, 'total': total})}\n\n"
             try:
-                dfs = await loop.run_in_executor(None, table_extractor.extract, str(f))
+                fut = loop.run_in_executor(None, table_extractor.extract, str(f))
+                async for ka in _keepalives(fut):
+                    yield ka
+                dfs = fut.result()
                 await loop.run_in_executor(None, ts.save, source_name, dfs)
                 tables_saved = await loop.run_in_executor(None, ts.merged_count, source_name)
             except Exception as e:
                 logger.warning(f"Table reextract failed for '{source_name}': {e}")
             try:
-                images = await loop.run_in_executor(None, extract_images, str(f))
+                fut = loop.run_in_executor(None, extract_images, str(f))
+                async for ka in _keepalives(fut):
+                    yield ka
+                images = fut.result()
                 await loop.run_in_executor(None, img_store.save, source_name, images)
                 images_saved = len(images)
             except Exception as e:

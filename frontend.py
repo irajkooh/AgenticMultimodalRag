@@ -939,7 +939,7 @@ def build_ui():
         import requests as _req
         import json as _json
         try:
-          with _req.post(f"{API_BASE}/reextract", stream=True, timeout=300) as resp:
+          with _req.post(f"{API_BASE}/reextract", stream=True, timeout=(10, None)) as resp:
             buf = b""
             # chunk_size=None → receive data at server-send boundaries (no buffering)
             for chunk in resp.iter_content(chunk_size=None):
