@@ -305,12 +305,13 @@ def chat_fn(message, history, n_results, temperature, source_filter=None):
 
     if answer_method == "table_query":
       method_note = "🗃️ *Answer generated from structured table query (SQL)*"
+    elif answer_method == "hybrid":
+      method_note = f"🗃️🔍 *Hybrid answer — SQL + document chunks ({chunks_used} chunks)*"
     else:
       method_note = f"🔍 *Answer retrieved from document chunks ({chunks_used} chunks)*"
 
-
-    # Always show the SQL block for table_query answers, even if sql_query is empty
-    if answer_method == "table_query":
+    # Always show the SQL block for table_query or hybrid answers
+    if answer_method in ("table_query", "hybrid") and sql_query:
       answer += f"\n\n**SQL query used:**\n```sql\n{sql_query}\n```"
 
     if sources:
@@ -483,6 +484,12 @@ _UI_CSS = """
         border-color: #3b82f6 !important;
         color: #e2e8f0 !important;
     }
+    /* Prevent Gradio's pending-state animation from blinking the header */
+    #header, #header * {
+        animation: none !important;
+        transition: none !important;
+        opacity: 1 !important;
+    }
 """
 SAMPLE_QUESTIONS = [
     "How you can help me?",                          "How many documents are there?",
@@ -523,7 +530,7 @@ def build_ui():
         outputs=[workflow_mermaid],
       ).then(
         fn=None,
-        js="() => { setTimeout(function(){ if(window.mermaid){ mermaid.initialize({startOnLoad:false,theme:'dark'}); mermaid.run(); } }, 150); }",
+        js="() => { setTimeout(function(){ if(window.mermaid){ mermaid.initialize({startOnLoad:false,theme:'neutral'}); mermaid.run(); } }, 150); }",
       )
 
       with gr.Tabs(selected=0) as tabs:
@@ -624,6 +631,7 @@ def build_ui():
               confirm_yes_btn = gr.Button("✔ Yes, remove all", elem_id="confirm-yes-btn")
               confirm_no_btn  = gr.Button("✖ Cancel",          elem_id="confirm-no-btn")
 
+            reextract_out = gr.Markdown(value="", elem_id="reextract-out")
             debug_out = gr.HTML(value="", elem_id="debug-out")
             debug_visible = gr.State(False)
 
@@ -928,18 +936,46 @@ def build_ui():
       )
 
       def run_reextract():
-        r = api_post("/reextract", timeout=300)
-        if "error" in r:
-          return f"❌ Re-extract failed: {r['error']}"
-        lines = [f"✅ Re-extraction complete:"]
-        for src, counts in r.get("results", {}).items():
-          lines.append(f"  • {src} — {counts['tables']} table(s), {counts['images']} image(s)")
-        return "\n".join(lines)
+        import requests as _req
+        import json as _json
+        try:
+          with _req.post(f"{API_BASE}/reextract", stream=True, timeout=300) as resp:
+            buf = b""
+            # chunk_size=None → receive data at server-send boundaries (no buffering)
+            for chunk in resp.iter_content(chunk_size=None):
+              if not chunk:
+                continue
+              buf += chunk
+              while b"\n\n" in buf:
+                event_bytes, buf = buf.split(b"\n\n", 1)
+                for raw in event_bytes.split(b"\n"):
+                  line = raw.decode("utf-8", errors="replace").strip()
+                  if not line.startswith("data: "):
+                    continue
+                  event = _json.loads(line[6:])
+                  if event.get("type") == "progress":
+                    idx, total, fname = event["index"], event["total"], event["file"]
+                    yield f"<span style='color:#facc15;'>⏳ Re-extracting {idx}/{total}: <span style='color:#3b82f6;font-weight:bold;'>{fname}</span>...</span>"
+                  elif event.get("type") == "complete":
+                    results = event.get("results", {})
+                    lines = ["<span style='color:#22c55e;font-weight:bold;'>✅ Re-extraction complete:</span>"]
+                    for src, counts in results.items():
+                      t, i = counts['tables'], counts['images']
+                      color = "#22c55e" if (t > 0 or i > 0) else "#6b7280"
+                      suffix = f"{t} table(s), {i} image(s)" if (t > 0 or i > 0) else "no tables or images"
+                      lines.append(
+                        f"<span style='color:{color};'>- <span style='color:#3b82f6;font-weight:bold;'>{src}</span>"
+                        f" — {suffix}</span>"
+                      )
+                    yield "<br>".join(lines)
+        except Exception as e:
+          yield f"❌ Re-extract failed: {e}"
 
       reextract_btn.click(
         fn=run_reextract,
         inputs=[],
-        outputs=[status_text],
+        outputs=[reextract_out],
+        show_progress="hidden",
       )
 
       def toggle_debug_info(current_visible, current_html):

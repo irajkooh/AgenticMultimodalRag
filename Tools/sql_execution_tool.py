@@ -30,9 +30,12 @@ def execute_sql(
         return None
 
 
-def build_detail_sql(aggregate_sql: str) -> Optional[str]:
+def build_detail_sql(aggregate_sql: str, limit: int = 15) -> Optional[str]:
     """From a single-value aggregate SQL, build a SELECT * query for underlying rows."""
-    m = _re.search(r"(FROM\s+\S+(?:\s+WHERE\s+.+)?)", aggregate_sql, _re.IGNORECASE | _re.DOTALL)
+    m = _re.search(r'\bFROM\b', aggregate_sql, _re.IGNORECASE)
     if m:
-        return f"SELECT * {m.group(1).rstrip(';')}"
+        from_clause = aggregate_sql[m.start():].rstrip(';').strip()
+        # Strip any trailing ORDER BY so we can append LIMIT cleanly
+        from_clause = _re.sub(r'\s+ORDER\s+BY\b.*$', '', from_clause, flags=_re.IGNORECASE).strip()
+        return f"SELECT * {from_clause} LIMIT {limit}"
     return None

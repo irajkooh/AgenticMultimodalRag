@@ -23,8 +23,12 @@ class DocImageAgent:
         n_results: int = 8,
         temperature: float = 0.0,
         source_filter: Optional[List[str]] = None,
+        table_answer: str = "",
     ) -> Tuple[str, List[str], int]:
-        """Answer question from docs/images. Returns (answer, sources, chunks_used)."""
+        """Answer question from docs/images. Returns (answer, sources, chunks_used).
+
+        table_answer: SQL result to inject as extra context for hybrid queries.
+        """
         if not source_filter:
             results = self._vs_tool.search_per_source(question, n_per_source=2)
         else:
@@ -50,6 +54,7 @@ class DocImageAgent:
             stream=False,
             source_filter=source_filter,
             pre_fetched_results=results,
+            extra_context=table_answer,
         ):
             parts.append(token)
         answer = "".join(parts)

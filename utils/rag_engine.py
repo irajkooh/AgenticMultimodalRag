@@ -43,6 +43,7 @@ Rules:
 5. Do NOT make up information that is not in the context.
 6. When answering questions about tables or structured data, apply ALL filter conditions from the question. Only include rows that match every condition — do not display or reference rows that do not match.
 7. Give ONLY the final answer. Do NOT show reasoning steps, intermediate calculations, excluded rows, or any explanation of how you arrived at the answer.
+8. Format key values, measurements, thresholds, and important requirements in **bold** (markdown). Use plain text for surrounding prose.
 """
 
 GENERAL_PROMPT = """You are a helpful AI assistant. Answer directly and concisely — final answer only, no reasoning steps.
@@ -103,11 +104,19 @@ class RAGEngine:
             parts.append(f"[Doc {i} — {source}{page_str}{type_str}]\n{r['text']}")
         return "\n\n---\n\n".join(parts)
 
-    def _build_messages(self, question: str, context: str, memory: ConversationMemory):
+    def _build_messages(self, question: str, context: str, memory: ConversationMemory, extra_context: str = ""):
+        if extra_context:
+            extra_section = (
+                f"[STRUCTURED DATA from tables]\n{extra_context}\n\n"
+                "Merge the structured data above with the document context below into one clean, readable answer. "
+                "Bold key values and measurements.\n\n"
+            )
+        else:
+            extra_section = ""
         user_message = (
-            f"[CONTEXT]\n{context}\n\n"
+            f"{extra_section}[CONTEXT from documents]\n{context}\n\n"
             f"[QUESTION]\n{question}\n\n"
-            "Remember: Answer ONLY from the context above. If not found, say \"I DON'T KNOW\"."
+            "Remember: Answer from the structured data and context above. If not found, say \"I DON'T KNOW\"."
         )
         return [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -136,15 +145,16 @@ class RAGEngine:
         stream: bool = False,
         source_filter: list = None,
         pre_fetched_results: list = None,
+        extra_context: str = "",
     ) -> Generator[str, None, None]:
         results = pre_fetched_results if pre_fetched_results is not None else self.vs.query(question, n_results=n_results, source_filter=source_filter)
 
-        if self._is_off_topic(results):
+        if self._is_off_topic(results) and not extra_context:
             logger.info(f"Off-topic query (no relevant chunks): '{question[:60]}'")
             messages = self._build_general_messages(question, memory)
         else:
             context  = self._build_context(results)
-            messages = self._build_messages(question, context, memory)
+            messages = self._build_messages(question, context, memory, extra_context)
 
         try:
             if BACKEND == "hf":

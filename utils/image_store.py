@@ -29,15 +29,19 @@ class ImageStore:
         return self.dir / safe
 
     def save(self, source: str, images: list):
-        """Save list of (page, img_idx, PIL.Image) tuples. Returns count saved."""
+        """Save list of (page, img_idx, PIL.Image) tuples. Returns count saved.
+        No folder is created and no images are written when the list is empty.
+        An empty index entry is still recorded so was_attempted() returns True.
+        """
         self._remove_files(source)
         self._index[source] = []
-        src_dir = self._source_dir(source)
-        src_dir.mkdir(parents=True, exist_ok=True)
-        for page, img_idx, pil_img in images:
-            path = src_dir / f"p{page}_i{img_idx}.png"
-            pil_img.save(path, format="PNG")
-            self._index[source].append({"path": str(path), "page": page, "image_index": img_idx})
+        if images:
+            src_dir = self._source_dir(source)
+            src_dir.mkdir(parents=True, exist_ok=True)
+            for page, img_idx, pil_img in images:
+                path = src_dir / f"p{page}_i{img_idx}.png"
+                pil_img.save(path, format="PNG")
+                self._index[source].append({"path": str(path), "page": page, "image_index": img_idx})
         self._save_index()
         return len(images)
 

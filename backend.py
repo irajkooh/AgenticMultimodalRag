@@ -23,10 +23,11 @@ from typing import List, Optional
 import threading
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+import json
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from utils.document_processor import process_document_chunked, SUPPORTED_EXTENSIONS, extract_images
+from utils.document_processor import process_document_chunked, SUPPORTED_EXTENSIONS, extract_images, images_to_chunks
 from utils.vector_store import VectorStoreManager
 from utils.rag_engine import RAGEngine
 from utils.memory import ConversationMemory, estimate_tokens
@@ -233,6 +234,7 @@ def push_tables_to_hf_hub():
             repo_type="dataset",
             commit_message="Update tables",
             ignore_patterns=["*.lock", ".DS_Store"],
+            delete_patterns="*",
         )
         logger.info("HF Hub: pushed tables")
     except Exception as e:
@@ -288,6 +290,7 @@ def push_images_to_hf_hub():
             repo_type="dataset",
             commit_message="Update images",
             ignore_patterns=["*.lock", ".DS_Store"],
+            delete_patterns="*",
         )
         logger.info("HF Hub: pushed images")
     except Exception as e:
@@ -388,13 +391,15 @@ from Agents.doc_image_agent import DocImageAgent
 from Agents.grading_agent import GradingAgent
 from Agents.hallucination_agent import HallucinationAgent
 from Agents.supervisor_agent import SupervisorAgent
+from MCPs.claude_sql_mcp import ClaudeSQLMCP
 
 llm_tool = LLMTool(rag)
 vs_tool = VectorSearchTool(vs)
 table_extractor = TableExtractionTool(llm_tool)
 router = RouterAgent()
-sql_gen = SQLGenAgent(llm_tool)
-table_agent_inst = TableAgent(llm_tool, ts, table_extractor, DATA_DIR, SUPPORTED_EXTENSIONS)
+claude_mcp = ClaudeSQLMCP()
+sql_gen = SQLGenAgent(llm_tool, mcp=claude_mcp)
+table_agent_inst = TableAgent(llm_tool, ts, table_extractor, DATA_DIR, SUPPORTED_EXTENSIONS, mcp=claude_mcp)
 doc_image_agent_inst = DocImageAgent(rag, vs_tool)
 grading_agent_inst = GradingAgent(llm_tool)
 hallucination_agent_inst = HallucinationAgent(llm_tool)
@@ -652,30 +657,36 @@ async def delete_document(filename: str):
 
 @app.post("/reextract")
 async def reextract_all():
-    """Re-run table and image extraction on all files in DATA_DIR. No re-embedding."""
+    """Re-run table and image extraction on all files in DATA_DIR. Streams per-file progress as SSE."""
     files = [f for f in Path(DATA_DIR).iterdir() if f.suffix.lower() in SUPPORTED_EXTENSIONS]
-    results = {}
-    for f in files:
-        source_name = f.name
-        tables_saved = 0
-        images_saved = 0
-        try:
-            dfs = table_extractor.extract(str(f))
-            ts.save(source_name, dfs)
-            tables_saved = len(dfs)
-        except Exception as e:
-            logger.warning(f"Table reextract failed for '{source_name}': {e}")
-        try:
-            images = extract_images(str(f))
-            img_store.save(source_name, images)
-            images_saved = len(images)
-        except Exception as e:
-            logger.warning(f"Image reextract failed for '{source_name}': {e}")
-        results[source_name] = {"tables": tables_saved, "images": images_saved}
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, push_tables_to_hf_hub)
-    loop.run_in_executor(None, push_images_to_hf_hub)
-    return {"results": results}
+
+    async def _generate():
+        results = {}
+        total = len(files)
+        loop = asyncio.get_running_loop()
+        for i, f in enumerate(files):
+            source_name = f.name
+            tables_saved = 0
+            images_saved = 0
+            yield f"data: {json.dumps({'type': 'progress', 'file': source_name, 'index': i + 1, 'total': total})}\n\n"
+            try:
+                dfs = await loop.run_in_executor(None, table_extractor.extract, str(f))
+                await loop.run_in_executor(None, ts.save, source_name, dfs)
+                tables_saved = await loop.run_in_executor(None, ts.merged_count, source_name)
+            except Exception as e:
+                logger.warning(f"Table reextract failed for '{source_name}': {e}")
+            try:
+                images = await loop.run_in_executor(None, extract_images, str(f))
+                await loop.run_in_executor(None, img_store.save, source_name, images)
+                images_saved = len(images)
+            except Exception as e:
+                logger.warning(f"Image reextract failed for '{source_name}': {e}")
+            results[source_name] = {"tables": tables_saved, "images": images_saved}
+        loop.run_in_executor(None, push_tables_to_hf_hub)
+        loop.run_in_executor(None, push_images_to_hf_hub)
+        yield f"data: {json.dumps({'type': 'complete', 'results': results})}\n\n"
+
+    return StreamingResponse(_generate(), media_type="text/event-stream")
 
 
 @app.delete("/documents")
@@ -741,6 +752,11 @@ def _index_background(filename: str, save_path: str):
             img_store.save(source_name, images)
             if images:
                 logger.info(f"ImageStore: saved {len(images)} image(s) for '{source_name}'")
+                _set_phase("indexing image text (OCR)…")
+                img_chunks = images_to_chunks(save_path, images)
+                if img_chunks:
+                    vs.add_documents(img_chunks, source_name)
+                    logger.info(f"Image OCR: {len(img_chunks)} chunk(s) indexed for '{source_name}'")
         except Exception as e:
             logger.warning(f"Image extraction failed for '{source_name}': {e}")
 

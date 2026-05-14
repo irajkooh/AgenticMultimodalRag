@@ -11,15 +11,19 @@ from Tools.sql_execution_tool import build_detail_sql
 logger = logging.getLogger(__name__)
 
 
+_ONDEMAND_EXTS = {".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif"}
+
+
 class TableAgent:
     """Full table query pipeline: extract → load → SQL → synthesize."""
 
-    def __init__(self, llm_tool, table_store, table_extraction_tool, data_dir: str, supported_extensions):
+    def __init__(self, llm_tool, table_store, table_extraction_tool, data_dir: str, supported_extensions, mcp=None):
         self._llm = llm_tool
         self._ts = table_store
         self._extractor = table_extraction_tool
         self._data_dir = data_dir
         self._supported_exts = supported_extensions
+        self._mcp = mcp
 
     def run(
         self,
@@ -35,9 +39,9 @@ class TableAgent:
             if f.suffix.lower() in self._supported_exts
         ]
 
-        # On-demand extraction for sources not yet attempted
+        # On-demand extraction only for image files — PDFs/DOCX require explicit indexing
         for src in sources:
-            if not self._ts.was_attempted(src):
+            if not self._ts.was_attempted(src) and Path(src).suffix.lower() in _ONDEMAND_EXTS:
                 fp = Path(self._data_dir) / src
                 if fp.exists():
                     try:
@@ -64,29 +68,35 @@ class TableAgent:
             return "No matching data found in the tables.", sql
 
         result_df = pd.DataFrame(rows, columns=col_names) if col_names else pd.DataFrame(rows)
-        result_str = result_df.to_string(index=False)
+        try:
+            result_str = result_df.to_markdown(index=False)
+        except ImportError:
+            result_str = result_df.to_string(index=False)
 
-        # For a single aggregate: return directly without LLM synthesis
-        if len(rows) == 1 and len(col_names) == 1:
-            detail_str = self._fetch_detail_rows(conn, sql)
+        # NULL aggregate: no rows matched the filter
+        if len(rows) == 1 and len(col_names) == 1 and rows[0][0] is None:
             conn.close()
-            raw_val = rows[0][0]
-            col_label = col_names[0]
-            answer = f"**{col_label}:** {raw_val}"
-            if detail_str:
-                answer += detail_str
-            return answer, sql
+            return "No matching data found for that filter.", sql
 
-        # Fetch detail rows for aggregate context
+        # Fetch detail rows for context on single-value aggregates
         detail_str = self._fetch_detail_rows(conn, sql) if len(rows) == 1 else ""
         conn.close()
 
-        messages = [
-            {"role": "system", "content": TABLE_ANALYST_SYSTEM},
-            {"role": "user", "content": build_table_answer_prompt(question, sql, result_str, detail_str)},
-        ]
-        answer = self._llm.call(messages, max_tokens=1024).strip()
-        return (answer if answer else result_str), sql
+        # Use MCP for synthesis when available (better accuracy); fall back to local LLM
+        if self._mcp and self._mcp.is_available():
+            answer = self._mcp.synthesize_answer(question, sql, result_str, detail_str)
+        else:
+            messages = [
+                {"role": "system", "content": TABLE_ANALYST_SYSTEM},
+                {"role": "user", "content": build_table_answer_prompt(question, sql, result_str, detail_str)},
+            ]
+            answer = self._llm.call(messages, max_tokens=1024).strip()
+        final_answer = answer if answer else result_str
+        if detail_str:
+            final_answer += detail_str
+        else:
+            final_answer += f"\n\n{result_str}"
+        return final_answer, sql
 
     def _fetch_detail_rows(self, conn, sql: str) -> str:
         detail_sql = build_detail_sql(sql)
@@ -100,6 +110,10 @@ class TableAgent:
             import pandas as pd
             dcols = [d[0] for d in dcursor.description]
             ddf = pd.DataFrame(drows, columns=dcols)
-            return f"\n\nUnderlying rows:\n{ddf.to_string(index=False)}"
+            try:
+                detail_md = ddf.to_markdown(index=False)
+            except ImportError:
+                detail_md = ddf.to_string(index=False)
+            return f"\n\nUnderlying rows:\n{detail_md}"
         except Exception:
             return ""

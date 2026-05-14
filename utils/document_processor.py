@@ -83,37 +83,6 @@ def extract_pdf(filepath: str) -> List[Dict[str, Any]]:
                 "metadata": chunk_meta,
             })
 
-        # Extract embedded images only from pages where text is sparse —
-        # avoids running slow Tesseract OCR on decorative images when the page
-        # already has readable text.
-        page_has_text = len(page_text.strip()) > 80
-        try:
-            if not page_has_text and hasattr(page, "images") and page.images:
-                MAX_IMAGES_PER_PAGE = 2
-                for img_idx, img_obj in enumerate(page.images[:MAX_IMAGES_PER_PAGE]):
-                    try:
-                        pil_img = Image.open(io.BytesIO(img_obj.data))
-                        # Skip tiny decorative images
-                        if pil_img.width < 100 or pil_img.height < 100:
-                            continue
-                        ocr_text = ocr_image(pil_img)
-                        # Don't store image_b64 in metadata — it bloats ChromaDB
-                        # SQLite with MBs of data per image and isn't used for retrieval.
-                        img_meta = {
-                            **chunk_meta,
-                            "type": "image",
-                            "image_index": img_idx,
-                        }
-                        text_content = ocr_text if ocr_text else f"[Image on page {page_num}]"
-                        chunks.append({
-                            "text": f"[Source: {filename}, Page {page_num}, Image {img_idx}]\n{text_content}",
-                            "metadata": img_meta,
-                        })
-                    except Exception as e:
-                        logger.debug(f"Skipping embedded image: {e}")
-        except Exception as e:
-            logger.debug(f"Image extraction error on page {page_num}: {e}")
-
     return chunks
 
 
@@ -387,6 +356,58 @@ def ocr_text_to_dataframe(text: str):
     return df
 
 
+def _img_table_is_useful(df) -> bool:
+    """Return True if the DataFrame has usable table data.
+
+    Accepts numeric tables AND text-only lookup tables (e.g. Sales Rep → Region).
+    Rejects OCR false-positives: tables with <2 rows/cols, mostly-empty columns,
+    or columns with only one distinct value.
+    """
+    if len(df) < 2 or len(df.columns) < 2:
+        return False
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            return True
+        parsed = pd.to_numeric(
+            df[col].astype(str).str.replace(r"[$,\s%]", "", regex=True),
+            errors="coerce",
+        )
+        if parsed.notna().mean() > 0.35:
+            return True
+    # Text-only: valid if every column has ≥50% non-empty values and ≥2 distinct values
+    for col in df.columns:
+        vals = df[col].astype(str).str.strip()
+        non_empty = vals[(vals.str.len() > 0) & ~vals.isin(["nan", "None", ""])]
+        if len(non_empty) / max(len(df), 1) < 0.5:
+            return False
+        if non_empty.nunique() < 2:
+            return False
+    return True
+
+
+def _img2table_dfs(filepath: str) -> list:
+    """Extract tables from a standalone image using img2table + Tesseract OCR.
+    Returns a list of DataFrames (empty if no tables found or img2table unavailable).
+    """
+    try:
+        from img2table.document import Image as _Img2Image
+        from img2table.ocr import TesseractOCR as _TesseractOCR
+        doc = _Img2Image(src=filepath)
+        extracted = doc.extract_tables(
+            ocr=_TesseractOCR(),
+            implicit_rows=True,
+            implicit_columns=True,
+            borderless_tables=True,
+        ) or []
+        return [t.df for t in extracted if t.df is not None and not t.df.empty and _img_table_is_useful(t.df)]
+    except ImportError:
+        logger.warning("img2table not installed; image table extraction skipped")
+        return []
+    except Exception as e:
+        logger.warning(f"img2table extraction failed for '{filepath}': {e}")
+        return []
+
+
 def extract_dataframes(filepath: str) -> list:
     """Extract tables as DataFrames from a document. Returns empty list if none found."""
     ext = Path(filepath).suffix.lower()
@@ -419,15 +440,33 @@ def extract_dataframes(filepath: str) -> list:
                 if df is not None:
                     dfs.append(df)
         elif ext in {'.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif'}:
-            pil_img = Image.open(filepath).convert('RGB')
-            ocr_text = ocr_image(pil_img)
-            if ocr_text:
-                df = ocr_text_to_dataframe(ocr_text)
-                if df is not None:
-                    dfs.append(df)
+            dfs.extend(_img2table_dfs(filepath))
     except Exception as e:
         logger.warning(f"Table extraction failed for {filepath}: {e}")
     return dfs
+
+
+def has_tables(filepath: str) -> bool:
+    """Return True if the file type can contain extractable tables.
+
+    CSV/XLSX are inherently tabular. DOCX is inspected for Word table objects.
+    PDFs and images defer to extract_dataframes() as the authority — img2table
+    runs on images so only files with real table structure produce DataFrames.
+    """
+    ext = Path(filepath).suffix.lower()
+    if ext == '.txt':
+        return False
+    if ext in {'.csv', '.xlsx', '.xls'}:
+        return True
+    if ext == '.docx':
+        try:
+            from docx import Document as _DocxDoc
+            return bool(_DocxDoc(filepath).tables)
+        except Exception:
+            return False
+    if ext in {'.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif'}:
+        return True  # extract_dataframes() is the authority
+    return False
 
 
 def extract_images(filepath: str) -> list:
@@ -455,6 +494,24 @@ def extract_images(filepath: str) -> list:
                         logger.debug(f"Skipping image p{page_num}[{img_idx}]: {e}")
             except Exception as e:
                 logger.debug(f"Image extraction error on page {page_num}: {e}")
+    elif ext == ".docx":
+        try:
+            from docx import Document as _Document
+            doc = _Document(filepath)
+            img_idx = 0
+            for rel in doc.part.rels.values():
+                if "image" in rel.reltype:
+                    try:
+                        img_data = rel.target_part.blob
+                        pil_img = Image.open(io.BytesIO(img_data)).convert("RGB")
+                        if pil_img.width < 100 or pil_img.height < 100:
+                            continue
+                        results.append((1, img_idx, pil_img))
+                        img_idx += 1
+                    except Exception as e:
+                        logger.debug(f"Skipping DOCX image: {e}")
+        except Exception as e:
+            logger.warning(f"DOCX image extraction failed for {filepath}: {e}")
     elif ext in {".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif"}:
         try:
             pil_img = Image.open(filepath).convert("RGB")
@@ -462,6 +519,33 @@ def extract_images(filepath: str) -> list:
         except Exception as e:
             logger.warning(f"Failed to open image file {filepath}: {e}")
     return results
+
+
+def images_to_chunks(filepath: str, images: list) -> List[Dict[str, Any]]:
+    """OCR extracted images and return chunked text records for the vector store.
+
+    images: list of (page, img_idx, PIL.Image) as returned by extract_images().
+    Only images that produce non-empty OCR text are included.
+    """
+    filename = Path(filepath).name
+    chunks = []
+    for page, img_idx, pil_img in images:
+        ocr_text = ocr_image(pil_img)
+        if not ocr_text:
+            continue
+        header = f"[Source: {filename}, Page {page}, Image {img_idx}]"
+        for i, sub in enumerate(chunk_text(f"{header}\n{ocr_text}")):
+            chunks.append({
+                "text": sub,
+                "metadata": {
+                    "source": filename,
+                    "page": page,
+                    "image_index": img_idx,
+                    "type": "image",
+                    "chunk_index": i,
+                },
+            })
+    return chunks
 
 
 def process_document_chunked(filepath: str) -> List[Dict[str, Any]]:

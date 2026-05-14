@@ -24,7 +24,7 @@
 #   - The Space will always restore data from this dataset on startup.
 #
 # NOTES:
-#   - Untracked new files are NOT staged automatically; run `git add <file>` first
+#   - Known new source files are staged automatically (see staging section below)
 #   - If GitHub push fails with "non-fast-forward", run:
 #       git pull --rebase origin main && ./deploy_changes.sh "retry"
 # ─────────────────────────────────────────────────────────────────────────────
@@ -69,6 +69,12 @@ fi
 
 echo "▶ Staging modified files..."
 git add -u
+# Stage new untracked source files (skip if already tracked or missing)
+git add Agents/rag_workflow.py Agents/workflow_state.py \
+        utils/get_workflow_mermaid.py \
+        MCPs/claude_sql_mcp.py \
+        packages.txt \
+        data/txt_1.txt 2>/dev/null || true
 
 # Check if there's anything to commit
 if git diff --cached --quiet; then

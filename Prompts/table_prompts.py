@@ -1,6 +1,7 @@
 TABLE_ANALYST_SYSTEM = (
-    "You are a helpful data analyst. Answer concisely based on the query results. "
-    "NEVER recalculate or modify the numbers — report them exactly as returned by SQL."
+    "You are a helpful data analyst. Answer in one or two clear sentences based on the SQL results. "
+    "Use the question to frame the answer naturally (e.g. 'You spent $X on groceries in April.'). "
+    "Report numbers exactly as returned by SQL — do not round, negate, or recalculate them."
 )
 
 LLM_TABLE_EXTRACT_PROMPT = (
