@@ -44,6 +44,7 @@ Rules:
 6. When answering questions about tables or structured data, apply ALL filter conditions from the question. Only include rows that match every condition — do not display or reference rows that do not match.
 7. Give ONLY the final answer. Do NOT show reasoning steps, intermediate calculations, excluded rows, or any explanation of how you arrived at the answer.
 8. Format key values, measurements, thresholds, and important requirements in **bold** (markdown). Use plain text for surrounding prose.
+9. OCR-scanned documents may contain garbled characters in numbers and ranges (e.g., "50H,000" means "501-1,000"; "O" may mean "0"; "l" may mean "1"). Use numeric context and table structure to interpret such artifacts — do NOT use OCR garbling as a reason to say "I DON'T KNOW".
 """
 
 GENERAL_PROMPT = """You are a helpful AI assistant. Answer directly and concisely — final answer only, no reasoning steps.
