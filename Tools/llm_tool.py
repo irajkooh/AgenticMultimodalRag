@@ -43,7 +43,22 @@ class LLMTool:
         except Exception as e:
             msg = str(e).lower()
             if "429" in msg or "rate_limit" in msg or "rate limit" in msg:
-                logger.warning("Groq rate limit in LLMTool — falling back to Ollama")
+                logger.warning("Groq rate limit in LLMTool — trying HF Inference fallback")
+                from utils.rag_engine import HF_TOKEN, DEFAULT_HF_MODEL, _make_hf_client
+                if HF_TOKEN:
+                    try:
+                        hf_client = _make_hf_client()
+                        hf_model = os.environ.get("HF_MODEL", DEFAULT_HF_MODEL)
+                        resp = hf_client.chat_completion(
+                            model=hf_model,
+                            messages=messages,
+                            temperature=0.01,
+                            max_tokens=max_tokens,
+                        )
+                        return resp.choices[0].message.content
+                    except Exception as hf_exc:
+                        logger.warning(f"HF Inference fallback failed: {hf_exc}")
+                logger.warning("Falling back to Ollama")
                 return self._ollama_fallback(messages)
             raise
 

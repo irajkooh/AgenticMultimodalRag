@@ -268,7 +268,25 @@ class RAGEngine:
                 yield answer
         except Exception as e:
             if _is_rate_limit(e):
-                logger.warning("Groq rate limit reached — falling back to Ollama")
+                logger.warning("Groq rate limit reached — trying HF Inference fallback")
+                if HF_TOKEN:
+                    try:
+                        hf_client = _make_hf_client()
+                        hf_model = os.environ.get("HF_MODEL", DEFAULT_HF_MODEL)
+                        resp = hf_client.chat_completion(
+                            model=hf_model,
+                            messages=messages,
+                            temperature=max(temperature, 0.01),
+                            max_tokens=2048,
+                        )
+                        answer = resp.choices[0].message.content
+                        memory.add("user", question)
+                        memory.add("assistant", answer)
+                        yield answer
+                        return
+                    except Exception as hf_exc:
+                        logger.warning(f"HF Inference fallback failed: {hf_exc}")
+                logger.warning("Falling back to Ollama")
                 try:
                     yield from self._ollama_fallback(messages, memory, question, temperature)
                 except Exception:
