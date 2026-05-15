@@ -391,15 +391,12 @@ from Agents.doc_image_agent import DocImageAgent
 from Agents.grading_agent import GradingAgent
 from Agents.hallucination_agent import HallucinationAgent
 from Agents.supervisor_agent import SupervisorAgent
-from MCPs.claude_sql_mcp import ClaudeSQLMCP
-
 llm_tool = LLMTool(rag)
 vs_tool = VectorSearchTool(vs)
 table_extractor = TableExtractionTool(llm_tool)
 router = RouterAgent()
-claude_mcp = ClaudeSQLMCP()
-sql_gen = SQLGenAgent(llm_tool, mcp=claude_mcp)
-table_agent_inst = TableAgent(llm_tool, ts, table_extractor, DATA_DIR, SUPPORTED_EXTENSIONS, mcp=claude_mcp)
+sql_gen = SQLGenAgent(llm_tool)
+table_agent_inst = TableAgent(llm_tool, ts, table_extractor, DATA_DIR, SUPPORTED_EXTENSIONS)
 doc_image_agent_inst = DocImageAgent(rag, vs_tool)
 grading_agent_inst = GradingAgent(llm_tool)
 hallucination_agent_inst = HallucinationAgent(llm_tool)

@@ -18,6 +18,40 @@ Application entrypoint (local dev + HuggingFace Spaces).
 """
 import os
 
+# Load secrets from _secrets/ files before any module imports that read env vars.
+# This makes local dev use the same LLM backend as HF Space (Groq when key exists).
+def _load_local_secrets():
+    """Scan all _secrets/*.txt files for API key lines identified by prefix."""
+    secrets_dir = os.path.join(os.path.dirname(__file__), "_secrets")
+    if not os.path.isdir(secrets_dir):
+        return
+
+    # Map key prefix → env var name
+    prefix_map = {
+        "hf_":  "AgenticMultiModalRag_Token",
+        "gsk_": "GROQ_API_KEY",
+    }
+
+    for txt_file in os.listdir(secrets_dir):
+        if not txt_file.endswith(".txt"):
+            continue
+        path = os.path.join(secrets_dir, txt_file)
+        for line in open(path).read().splitlines():
+            line = line.strip()
+            for prefix, env_var in prefix_map.items():
+                if line.startswith(prefix) and not os.environ.get(env_var):
+                    os.environ[env_var] = line
+
+    # On local dev, fall back to HF Inference when no Groq key is present.
+    # Avoids the 3B Ollama model which produces factually wrong answers
+    # when multiple measurements appear in the retrieved context.
+    if not os.environ.get("SPACE_ID") and not os.environ.get("GROQ_API_KEY"):
+        hf_token = os.environ.get("AgenticMultiModalRag_Token") or os.environ.get("HF_TOKEN")
+        if hf_token:
+            os.environ.setdefault("USE_HF_LLM", "1")
+
+_load_local_secrets()
+
 # Suppress the HuggingFace tokenizers fork warning that spams the console
 # when Gradio/uvicorn start worker processes after tokenizers is already loaded.
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")

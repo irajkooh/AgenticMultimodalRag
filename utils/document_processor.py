@@ -374,6 +374,11 @@ def _img_table_is_useful(df) -> bool:
         if not non_none.empty and (non_none.str.len() == 1).any():
             return False
 
+    # Rule 2: any cell > 100 chars means prose/resume text or garbage — reject regardless of numeric columns
+    all_vals = df.astype(str).values.flatten()
+    if any(len(v.strip()) > 100 for v in all_vals if v.strip() not in ("nan", "None", "")):
+        return False
+
     for col in df.columns:
         if pd.api.types.is_numeric_dtype(df[col]):
             return True
@@ -391,10 +396,69 @@ def _img_table_is_useful(df) -> bool:
             return False
         if non_empty.nunique() < 2:
             return False
-        # Reject paragraph/resume text masquerading as table cells
-        if non_empty.str.len().mean() > 80:
-            return False
     return True
+
+
+def _should_merge(bbox_a, bbox_b, y_gap_px: int = 50, x1_px: int = 20, x2_pct: float = 0.15) -> bool:
+    """True when two bounding boxes represent vertically-adjacent segments of the same table."""
+    y_gap = bbox_b.y1 - bbox_a.y2
+    x_ref = max(bbox_a.x2, bbox_b.x2)
+    return (
+        y_gap < y_gap_px
+        and abs(bbox_a.x1 - bbox_b.x1) <= x1_px
+        and abs(bbox_a.x2 - bbox_b.x2) <= x_ref * x2_pct
+    )
+
+
+def _concat_dfs(base: "pd.DataFrame", extra: "pd.DataFrame") -> "pd.DataFrame":
+    """Concatenate two DataFrames, aligning column count to base."""
+    ncols = len(base.columns)
+    n = len(extra.columns)
+    extra = extra.copy()
+    if n < ncols:
+        for k in range(n, ncols):
+            extra[f"_pad_{k}"] = ""
+    elif n > ncols:
+        extra = extra.iloc[:, :ncols]
+    extra.columns = base.columns
+    return pd.concat([base, extra], ignore_index=True)
+
+
+def _merge_adjacent_img_tables(tables: list) -> list:
+    """Group vertically-adjacent table segments with similar x-spans and merge each group.
+
+    Works for any number of consecutive segments (not just pairs), so a table
+    split into 3+ bounding-box regions is still returned as one DataFrame.
+
+    Two segments are considered part of the same group when:
+      - vertical gap < 50 px
+      - left edges (x1) within 20 px
+      - right edges (x2) within 15 % of the wider span
+    """
+    if len(tables) <= 1:
+        return [t[0] for t in tables]
+
+    tables = sorted(tables, key=lambda t: t[1].y1)
+
+    # Build groups of consecutive adjacent segments
+    groups: list[list] = [[tables[0]]]
+    for df, bbox in tables[1:]:
+        _, prev_bbox = groups[-1][-1]
+        if _should_merge(prev_bbox, bbox):
+            groups[-1].append((df, bbox))
+        else:
+            groups.append([(df, bbox)])
+
+    result = []
+    for group in groups:
+        if len(group) == 1:
+            result.append(group[0][0])
+        else:
+            merged = group[0][0]
+            for df, _ in group[1:]:
+                merged = _concat_dfs(merged, df)
+            result.append(merged)
+    return result
 
 
 def _img2table_dfs(filepath: str) -> list:
@@ -407,11 +471,16 @@ def _img2table_dfs(filepath: str) -> list:
         doc = _Img2Image(src=filepath)
         extracted = doc.extract_tables(
             ocr=_TesseractOCR(),
-            implicit_rows=True,
-            implicit_columns=True,
+            implicit_rows=False,
+            implicit_columns=False,
             borderless_tables=True,
         ) or []
-        return [t.df for t in extracted if t.df is not None and not t.df.empty and _img_table_is_useful(t.df)]
+        useful = [
+            (t.df, t.bbox)
+            for t in extracted
+            if t.df is not None and not t.df.empty and _img_table_is_useful(t.df)
+        ]
+        return _merge_adjacent_img_tables(useful)
     except ImportError:
         logger.warning("img2table not installed; image table extraction skipped")
         return []

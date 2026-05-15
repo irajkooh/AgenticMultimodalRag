@@ -205,29 +205,37 @@ class RAGEngine:
             yield error_msg
 
     def _query_hf(self, messages, memory, question, temperature, stream):
-        # HuggingFace Inference API — OpenAI-compatible chat completions
-        resp = self._client.chat_completion(
-            model=self.model,
-            messages=messages,
-            temperature=max(temperature, 0.01),
-            max_tokens=2048,
-        )
-        answer = resp.choices[0].message.content
-        memory.add("user", question)
-        memory.add("assistant", answer)
-        yield answer
+        try:
+            resp = self._client.chat_completion(
+                model=self.model,
+                messages=messages,
+                temperature=max(temperature, 0.01),
+                max_tokens=2048,
+            )
+            answer = resp.choices[0].message.content
+            memory.add("user", question)
+            memory.add("assistant", answer)
+            yield answer
+        except Exception as e:
+            if "402" in str(e) or "payment" in str(e).lower() or "depleted" in str(e).lower():
+                logger.warning("HF Inference credits depleted — falling back to Ollama")
+                try:
+                    yield from self._ollama_fallback(messages, memory, question, temperature)
+                except Exception:
+                    yield "⚠️ HF Inference credits depleted and Ollama is not available. Please set a GROQ_API_KEY."
+            else:
+                raise
 
-    def _hf_fallback(self, messages, memory, question, temperature):
-        from huggingface_hub import InferenceClient
-        model = os.environ.get("HF_MODEL", DEFAULT_HF_MODEL)
-        client = InferenceClient(token=HF_TOKEN)
-        resp = client.chat_completion(
+    def _ollama_fallback(self, messages, memory, question, temperature):
+        import ollama
+        model = os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+        client = ollama.Client(host=OLLAMA_HOST)
+        response = client.chat(
             model=model,
             messages=messages,
-            temperature=max(temperature, 0.01),
-            max_tokens=2048,
+            options={"temperature": temperature},
         )
-        answer = resp.choices[0].message.content
+        answer = response["message"]["content"]
         memory.add("user", question)
         memory.add("assistant", answer)
         yield answer
@@ -260,11 +268,11 @@ class RAGEngine:
                 yield answer
         except Exception as e:
             if _is_rate_limit(e):
-                if HF_TOKEN:
-                    logger.warning("Groq rate limit reached — falling back to HF Inference")
-                    yield from self._hf_fallback(messages, memory, question, temperature)
-                else:
-                    yield "⚠️ Groq daily token limit reached (100K/day free tier). Please try again in a few hours, or upgrade at https://console.groq.com/settings/billing"
+                logger.warning("Groq rate limit reached — falling back to Ollama")
+                try:
+                    yield from self._ollama_fallback(messages, memory, question, temperature)
+                except Exception:
+                    yield "⚠️ Groq daily token limit reached and Ollama is not available. Please try again later or upgrade at https://console.groq.com/settings/billing"
             else:
                 raise
 

@@ -17,13 +17,12 @@ _ONDEMAND_EXTS = {".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif"}
 class TableAgent:
     """Full table query pipeline: extract → load → SQL → synthesize."""
 
-    def __init__(self, llm_tool, table_store, table_extraction_tool, data_dir: str, supported_extensions, mcp=None):
+    def __init__(self, llm_tool, table_store, table_extraction_tool, data_dir: str, supported_extensions):
         self._llm = llm_tool
         self._ts = table_store
         self._extractor = table_extraction_tool
         self._data_dir = data_dir
         self._supported_exts = supported_extensions
-        self._mcp = mcp
 
     def run(
         self,
@@ -82,15 +81,11 @@ class TableAgent:
         detail_str = self._fetch_detail_rows(conn, sql) if len(rows) == 1 else ""
         conn.close()
 
-        # Use MCP for synthesis when available (better accuracy); fall back to local LLM
-        if self._mcp and self._mcp.is_available():
-            answer = self._mcp.synthesize_answer(question, sql, result_str, detail_str)
-        else:
-            messages = [
-                {"role": "system", "content": TABLE_ANALYST_SYSTEM},
-                {"role": "user", "content": build_table_answer_prompt(question, sql, result_str, detail_str)},
-            ]
-            answer = self._llm.call(messages, max_tokens=1024).strip()
+        messages = [
+            {"role": "system", "content": TABLE_ANALYST_SYSTEM},
+            {"role": "user", "content": build_table_answer_prompt(question, sql, result_str, detail_str)},
+        ]
+        answer = self._llm.call(messages, max_tokens=1024).strip()
         final_answer = answer if answer else result_str
         if detail_str:
             final_answer += detail_str

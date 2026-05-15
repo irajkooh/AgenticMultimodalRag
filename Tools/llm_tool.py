@@ -20,17 +20,11 @@ class LLMTool:
             Already-initialised RAGEngine — we borrow its client, model, and backend.
         """
         self._rag = rag_engine
-        # Import backend constant from rag_engine's module
-        from utils.rag_engine import BACKEND, DEFAULT_HF_MODEL
+        from utils.rag_engine import BACKEND
         self._backend = BACKEND
-        self._default_hf_model = DEFAULT_HF_MODEL
-        self._hf_token = os.environ.get("HF_TOKEN") or os.environ.get("AgenticMultiModalRag_Token", "")
 
     def call(self, messages: list, max_tokens: int = 512) -> str:
-        """Synchronous LLM call. Returns the response text.
-
-        Falls back to HuggingFace Inference on Groq rate-limit (if HF_TOKEN set).
-        """
+        """Synchronous LLM call. Returns the response text."""
         if self._backend == "groq":
             return self._call_groq(messages, max_tokens)
         elif self._backend == "hf":
@@ -48,19 +42,25 @@ class LLMTool:
             return resp.choices[0].message.content
         except Exception as e:
             msg = str(e).lower()
-            if ("429" in msg or "rate_limit" in msg or "rate limit" in msg) and self._hf_token:
-                logger.warning("Groq rate limit in LLMTool — falling back to HF Inference")
-                return self._hf_fallback(messages, max_tokens)
+            if "429" in msg or "rate_limit" in msg or "rate limit" in msg:
+                logger.warning("Groq rate limit in LLMTool — falling back to Ollama")
+                return self._ollama_fallback(messages)
             raise
 
     def _call_hf(self, messages: list, max_tokens: int) -> str:
-        resp = self._rag._client.chat_completion(
-            model=self._rag.model,
-            messages=messages,
-            temperature=0.01,
-            max_tokens=max_tokens,
-        )
-        return resp.choices[0].message.content
+        try:
+            resp = self._rag._client.chat_completion(
+                model=self._rag.model,
+                messages=messages,
+                temperature=0.01,
+                max_tokens=max_tokens,
+            )
+            return resp.choices[0].message.content
+        except Exception as e:
+            if "402" in str(e) or "payment" in str(e).lower() or "depleted" in str(e).lower():
+                logger.warning("HF Inference credits depleted in LLMTool — falling back to Ollama")
+                return self._ollama_fallback(messages)
+            raise
 
     def _call_ollama(self, messages: list) -> str:
         response = self._rag._client.chat(
@@ -70,14 +70,14 @@ class LLMTool:
         )
         return response["message"]["content"]
 
-    def _hf_fallback(self, messages: list, max_tokens: int) -> str:
-        from huggingface_hub import InferenceClient
-        client = InferenceClient(token=self._hf_token)
-        model = os.environ.get("HF_MODEL", self._default_hf_model)
-        resp = client.chat_completion(
+    def _ollama_fallback(self, messages: list) -> str:
+        import ollama
+        from utils.rag_engine import OLLAMA_HOST, DEFAULT_OLLAMA_MODEL
+        client = ollama.Client(host=OLLAMA_HOST)
+        model = os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+        response = client.chat(
             model=model,
             messages=messages,
-            temperature=0.01,
-            max_tokens=max_tokens,
+            options={"temperature": 0.0},
         )
-        return resp.choices[0].message.content
+        return response["message"]["content"]

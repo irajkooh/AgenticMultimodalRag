@@ -27,9 +27,8 @@ _STOPWORDS = {
 class SQLGenAgent:
     """Selects relevant tables, generates SQL via LLM, executes, and returns results."""
 
-    def __init__(self, llm_tool, mcp=None):
+    def __init__(self, llm_tool):
         self._llm = llm_tool
-        self._mcp = mcp
 
     _MAX_TABLES_IN_PROMPT = 5
 
@@ -63,46 +62,35 @@ class SQLGenAgent:
         schema_info: list,
         conn,
     ) -> Optional[Tuple[str, List, List[str]]]:
-        """Generate SQL, execute it, retry once on error. Falls back to MCP on failure.
+        """Generate SQL, execute it, retry once on error.
         Returns (sql, rows, col_names) or None."""
         relevant = self.select_relevant_tables(question, schema_info)
+        if not relevant:
+            return None
 
-        if relevant:
-            sql_prompt = build_sql_prompt(question, relevant)
-            messages = [
-                {"role": "system", "content": SQL_SYSTEM},
-                {"role": "user", "content": sql_prompt},
-            ]
+        sql_prompt = build_sql_prompt(question, relevant)
+        messages = [
+            {"role": "system", "content": SQL_SYSTEM},
+            {"role": "user", "content": sql_prompt},
+        ]
 
-            for attempt in range(2):
-                try:
-                    llm_out = self._llm.call(messages, max_tokens=512)
-                except Exception as e:
-                    logger.warning(f"LLM SQL generation failed: {e}")
-                    break
-                if not llm_out:
-                    break
-                sql = strip_sql_fences(llm_out.strip())
-                result = execute_sql(sql, conn)
-                if result is not None:
-                    return result
-                logger.warning(f"SQL exec failed (attempt {attempt + 1}): SQL: {sql}")
-                if attempt == 0:
-                    messages = messages + [
-                        {"role": "assistant", "content": sql},
-                        {"role": "user", "content": "That SQL failed. Return only the corrected SQL query."},
-                    ]
-
-        # Local LLM failed or no tables matched — try MCP fallback
-        if self._mcp and self._mcp.is_available():
-            logger.info("Local SQL gen failed — falling back to Claude MCP")
-            mcp_tables = self._mcp.select_tables(question, schema_info)
-            if mcp_tables:
-                sql = self._mcp.generate_sql(question, mcp_tables)
-                if sql:
-                    result = execute_sql(sql, conn)
-                    if result is not None:
-                        return result
-                    logger.warning(f"MCP SQL also failed: {sql}")
+        for attempt in range(2):
+            try:
+                llm_out = self._llm.call(messages, max_tokens=512)
+            except Exception as e:
+                logger.warning(f"LLM SQL generation failed: {e}")
+                return None
+            if not llm_out:
+                return None
+            sql = strip_sql_fences(llm_out.strip())
+            result = execute_sql(sql, conn)
+            if result is not None:
+                return result
+            logger.warning(f"SQL exec failed (attempt {attempt + 1}): SQL: {sql}")
+            if attempt == 0:
+                messages = messages + [
+                    {"role": "assistant", "content": sql},
+                    {"role": "user", "content": "That SQL failed. Return only the corrected SQL query."},
+                ]
 
         return None

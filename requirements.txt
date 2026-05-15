@@ -39,7 +39,6 @@ sentence-transformers==5.2.3
 # ── Cloud LLM backends ──────────────────────────────────────────────────────
 groq>=0.9.0
 huggingface_hub>=0.25.0
-anthropic>=0.20.0
 
 # ── TTS (server-side audio generation for mobile compatibility) ───────────────
 gtts>=2.5.0
