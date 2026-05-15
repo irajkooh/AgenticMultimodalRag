@@ -17,9 +17,10 @@ from utils.memory import ConversationMemory
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_OLLAMA_MODEL = "llama3.2"
-DEFAULT_GROQ_MODEL   = "llama-3.3-70b-versatile"
-DEFAULT_HF_MODEL     = "meta-llama/Llama-3.1-8B-Instruct"
+DEFAULT_OLLAMA_MODEL  = "llama3.2"
+DEFAULT_GROQ_MODEL    = "llama-3.3-70b-versatile"
+GROQ_FALLBACK_MODEL   = "llama-3.1-8b-instant"   # separate daily quota, higher limits
+DEFAULT_HF_MODEL      = "meta-llama/Llama-3.1-8B-Instruct"
 
 HF_TOKEN     = os.environ.get("HF_TOKEN") or os.environ.get("AgenticMultiModalRag_Token", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
@@ -278,9 +279,26 @@ class RAGEngine:
                 yield answer
         except Exception as e:
             if _is_rate_limit(e):
-                logger.warning("Groq rate limit reached — trying HF Inference fallback")
+                # 1. Try a smaller Groq model — it has a separate, larger daily quota
+                if self.model != GROQ_FALLBACK_MODEL:
+                    try:
+                        logger.warning(f"Groq rate limit on {self.model} — trying {GROQ_FALLBACK_MODEL}")
+                        resp = self._client.chat.completions.create(
+                            model=GROQ_FALLBACK_MODEL,
+                            messages=messages,
+                            temperature=temperature,
+                        )
+                        answer = resp.choices[0].message.content
+                        memory.add("user", question)
+                        memory.add("assistant", answer)
+                        yield answer
+                        return
+                    except Exception as fb_exc:
+                        logger.warning(f"Groq {GROQ_FALLBACK_MODEL} also failed: {fb_exc}")
+                # 2. HF Inference
                 if HF_TOKEN:
                     try:
+                        logger.warning("Trying HF Inference fallback")
                         hf_client = _make_hf_client()
                         hf_model = os.environ.get("HF_MODEL", DEFAULT_HF_MODEL)
                         resp = hf_client.chat_completion(
@@ -296,11 +314,11 @@ class RAGEngine:
                         return
                     except Exception as hf_exc:
                         logger.warning(f"HF Inference fallback failed: {hf_exc}")
-                logger.warning("Falling back to Ollama")
+                # 3. Ollama
                 try:
                     yield from self._ollama_fallback(messages, memory, question, temperature)
                 except Exception:
-                    yield "⚠️ Groq daily token limit reached and Ollama is not available. Please try again later or upgrade at https://console.groq.com/settings/billing"
+                    yield "⚠️ All LLM backends are currently unavailable (Groq daily limit reached, Ollama not running). Please try again later or upgrade at https://console.groq.com/settings/billing"
             else:
                 raise
 

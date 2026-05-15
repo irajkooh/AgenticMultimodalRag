@@ -43,10 +43,23 @@ class LLMTool:
         except Exception as e:
             msg = str(e).lower()
             if "429" in msg or "rate_limit" in msg or "rate limit" in msg:
-                logger.warning("Groq rate limit in LLMTool — trying HF Inference fallback")
-                from utils.rag_engine import HF_TOKEN, DEFAULT_HF_MODEL, _make_hf_client
+                from utils.rag_engine import HF_TOKEN, DEFAULT_HF_MODEL, GROQ_FALLBACK_MODEL, _make_hf_client
+                # 1. Try smaller Groq model (separate daily quota)
+                if self._rag.model != GROQ_FALLBACK_MODEL:
+                    try:
+                        logger.warning(f"Groq rate limit in LLMTool — trying {GROQ_FALLBACK_MODEL}")
+                        resp = self._rag._client.chat.completions.create(
+                            model=GROQ_FALLBACK_MODEL,
+                            messages=messages,
+                            temperature=0.0,
+                        )
+                        return resp.choices[0].message.content
+                    except Exception as fb_exc:
+                        logger.warning(f"Groq {GROQ_FALLBACK_MODEL} also failed: {fb_exc}")
+                # 2. HF Inference
                 if HF_TOKEN:
                     try:
+                        logger.warning("Trying HF Inference fallback in LLMTool")
                         hf_client = _make_hf_client()
                         hf_model = os.environ.get("HF_MODEL", DEFAULT_HF_MODEL)
                         resp = hf_client.chat_completion(
@@ -58,7 +71,7 @@ class LLMTool:
                         return resp.choices[0].message.content
                     except Exception as hf_exc:
                         logger.warning(f"HF Inference fallback failed: {hf_exc}")
-                logger.warning("Falling back to Ollama")
+                # 3. Ollama
                 return self._ollama_fallback(messages)
             raise
 
