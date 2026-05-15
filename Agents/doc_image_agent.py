@@ -24,10 +24,11 @@ class DocImageAgent:
         temperature: float = 0.0,
         source_filter: Optional[List[str]] = None,
         table_answer: str = "",
-    ) -> Tuple[str, List[str], int]:
-        """Answer question from docs/images. Returns (answer, sources, chunks_used).
+    ) -> Tuple[str, List[str], int, str]:
+        """Answer question from docs/images. Returns (answer, sources, chunks_used, context).
 
         table_answer: SQL result to inject as extra context for hybrid queries.
+        context: the raw text context sent to the LLM (used by hallucination checker).
         """
         if not source_filter:
             results = self._vs_tool.search_per_source(question, n_per_source=4)
@@ -49,6 +50,8 @@ class DocImageAgent:
         # (e.g. reference txt files) don't pollute context.
         llm_results = relevant if relevant else results
 
+        context = self._rag._build_context(llm_results)
+
         parts = []
         for token in self._rag.query(
             question,
@@ -62,4 +65,4 @@ class DocImageAgent:
         ):
             parts.append(token)
         answer = "".join(parts)
-        return answer, sources, chunks_used
+        return answer, sources, chunks_used, context

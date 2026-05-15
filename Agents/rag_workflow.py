@@ -246,7 +246,7 @@ class RAGWorkflow:
 
     def _doc_image_node(self, state: WorkflowState) -> dict:
         table_answer = state.get("table_answer", "")
-        answer, doc_sources, chunks_used = self._doc_image.run(
+        answer, doc_sources, chunks_used, context = self._doc_image.run(
             state["query"],
             state.get("memory"),
             n_results=state.get("n_results", 8),
@@ -262,7 +262,7 @@ class RAGWorkflow:
             "chunks_used": chunks_used,
             "answer_method": "hybrid" if is_hybrid else "rag",
             "sql_query": state.get("sql_query", ""),
-            "context": "",
+            "context": context,
         }
 
     def _grader_node(self, state: WorkflowState) -> dict:

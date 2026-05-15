@@ -8,6 +8,7 @@ Backend priority:
 3. Otherwise → Ollama (local)
 """
 import os
+import re
 import logging
 from typing import List, Dict, Any, Generator
 
@@ -92,6 +93,15 @@ class RAGEngine:
             logger.info(f"LLM backend: Ollama ({self.model})")
 
     @staticmethod
+    def _fix_ocr(text: str) -> str:
+        """Fix common OCR garbling in scanned building-code PDFs before sending to LLM."""
+        # "50H,000" → "501-1,000"  (range rows in IBC Table 1006.3.3 and similar tables)
+        text = re.sub(r'(\d+)H,(\d{3})', lambda m: f"{m.group(1)}1-1,{m.group(2)}", text)
+        # "81/z" / "91/z" / "81/i" / "91/i" → "8½" / "9½"  (PDF fraction "½" OCR'd as "1/z" or "1/i")
+        text = re.sub(r'(\d+)1/[zi]', lambda m: f"{m.group(1)}½", text)
+        return text
+
+    @staticmethod
     def _is_question_only(text: str) -> bool:
         """True when a chunk is mostly a list of questions with no answer content."""
         lines = [l.strip() for l in text.splitlines() if l.strip()]
@@ -136,7 +146,7 @@ class RAGEngine:
             doc_type = meta.get("type", "text")
             page_str = f", Page {page}" if page else ""
             type_str = f" [{doc_type}]" if doc_type != "text" else ""
-            parts.append(f"[Doc {idx} — {source}{page_str}{type_str}]\n{r['text']}")
+            parts.append(f"[Doc {idx} — {source}{page_str}{type_str}]\n{self._fix_ocr(r['text'])}")
             idx += 1
         return "\n\n---\n\n".join(parts) if parts else "No relevant documents found."
 
