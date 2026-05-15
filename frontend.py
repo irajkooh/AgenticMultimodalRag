@@ -118,7 +118,7 @@ def upload_files(files):
   """
   import urllib.parse
 
-  _noop = (gr.update(), gr.update(), gr.update(), gr.update(), gr.update())
+  _noop = (gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update())
 
   def _emit(html, refresh=False):
     if refresh:
@@ -128,7 +128,8 @@ def upload_files(files):
               status_msg,
               gr.update(interactive=True),
               _header_html(model, device),
-              gr.update(choices=docs or []))
+              gr.update(choices=docs or []),
+              docs or [])
     return (html, *_noop)
 
   if not files:
@@ -213,6 +214,7 @@ def upload_files(files):
     gr.update(interactive=True),
     _header_html(model, device),
     gr.update(choices=docs or []),
+    docs or [],
   )
 
 
@@ -619,6 +621,7 @@ def build_ui():
               interactive=True,
             )
             doc_list_state = gr.State([])
+            all_docs_state = gr.State([])
             with gr.Row():
               delete_btn     = gr.Button("🗑 Remove selected", elem_id="delete-btn")
               delete_all_btn = gr.Button("🗑 Remove ALL",      elem_id="delete-all-btn")
@@ -654,12 +657,13 @@ def build_ui():
             gr.update(interactive=True),
             _header_html(model, device),
             gr.update(choices=docs or []),
+            docs or [],
         )
 
       demo.load(
         fn=lambda selected: refresh_and_update(selected),
         inputs=[doc_list_state],
-        outputs=[doc_list, status_text, submit_btn, header_md, source_filter_dd],
+        outputs=[doc_list, status_text, submit_btn, header_md, source_filter_dd, all_docs_state],
       )
       # Unlock Web Speech API for mobile (iOS Safari blocks speechSynthesis
       # from async callbacks unless speak() is called once in a direct user gesture first)
@@ -692,8 +696,7 @@ def build_ui():
       }"""
       demo.load(fn=None, js=_JS_LOAD_MERMAID)
 
-      def _apply_filter(pattern: str):
-          docs, *_ = get_status()
+      def _apply_filter(pattern: str, docs: list):
           docs = docs or []
           if not pattern or not pattern.strip():
               return gr.update(choices=docs, value=[])
@@ -703,7 +706,7 @@ def build_ui():
           matched = list(dict.fromkeys(matched))  # dedupe, preserve order
           return gr.update(choices=docs, value=matched)
 
-      filter_pattern_tb.submit(fn=_apply_filter, inputs=[filter_pattern_tb], outputs=[source_filter_dd])
+      filter_pattern_tb.submit(fn=_apply_filter, inputs=[filter_pattern_tb, all_docs_state], outputs=[source_filter_dd])
 
       demo.load(
           fn=None,
@@ -891,17 +894,17 @@ def build_ui():
       file_upload.upload(
         fn=upload_files,
         inputs=[file_upload],
-        outputs=[upload_status, doc_list, status_text, submit_btn, header_md, source_filter_dd],
+        outputs=[upload_status, doc_list, status_text, submit_btn, header_md, source_filter_dd, all_docs_state],
       )
       add_url_btn.click(
         fn=lambda url, selected: (add_url(url), *refresh_and_update(selected), gr.update(value="")),
         inputs=[url_input, doc_list_state],
-        outputs=[upload_status, doc_list, status_text, submit_btn, header_md, source_filter_dd, url_input],
+        outputs=[upload_status, doc_list, status_text, submit_btn, header_md, source_filter_dd, all_docs_state, url_input],
       )
       url_input.submit(
         fn=lambda url, selected: (add_url(url), *refresh_and_update(selected), gr.update(value="")),
         inputs=[url_input, doc_list_state],
-        outputs=[upload_status, doc_list, status_text, submit_btn, header_md, source_filter_dd, url_input],
+        outputs=[upload_status, doc_list, status_text, submit_btn, header_md, source_filter_dd, all_docs_state, url_input],
       )
       def _delete_and_refresh(selected):
         msg = delete_document(selected)
@@ -912,7 +915,7 @@ def build_ui():
       delete_btn.click(
         fn=_delete_and_refresh,
         inputs=[doc_list_state],
-        outputs=[upload_status, doc_list, status_text, submit_btn, header_md, source_filter_dd, doc_list_state],
+        outputs=[upload_status, doc_list, status_text, submit_btn, header_md, source_filter_dd, all_docs_state, doc_list_state],
       )
       # Show confirmation row when Remove ALL is clicked
       delete_all_btn.click(
@@ -922,7 +925,7 @@ def build_ui():
       # Confirm: execute delete, hide confirmation row
       confirm_yes_btn.click(
         fn=lambda: (gr.update(visible=False), delete_all_embeddings(), *refresh_and_update()),
-        outputs=[confirm_row, upload_status, doc_list, status_text, submit_btn, header_md, source_filter_dd],
+        outputs=[confirm_row, upload_status, doc_list, status_text, submit_btn, header_md, source_filter_dd, all_docs_state],
       )
       # Cancel: just hide the confirmation row
       confirm_no_btn.click(
@@ -932,7 +935,7 @@ def build_ui():
       refresh_btn.click(
         fn=lambda selected: refresh_and_update(selected),
         inputs=[doc_list_state],
-        outputs=[doc_list, status_text, submit_btn, header_md, source_filter_dd],
+        outputs=[doc_list, status_text, submit_btn, header_md, source_filter_dd, all_docs_state],
       )
 
       def run_reextract():
@@ -1004,7 +1007,7 @@ def build_ui():
       gr.Timer(value=5).tick(
         fn=lambda selected: refresh_and_update(selected),
         inputs=[doc_list_state],
-        outputs=[doc_list, status_text, submit_btn, header_md, source_filter_dd],
+        outputs=[doc_list, status_text, submit_btn, header_md, source_filter_dd, all_docs_state],
       )
 
       def _thinking_html(q):
