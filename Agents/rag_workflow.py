@@ -15,6 +15,7 @@ Graph flow:
                                                 → END
 """
 import logging
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any, List, Optional
@@ -24,6 +25,21 @@ from langgraph.graph import StateGraph, START, END
 from .workflow_state import WorkflowState
 
 logger = logging.getLogger(__name__)
+
+_PRONOUN_LEAD_RE = re.compile(r'^\s*(he|she|his|her|their|its)\b', re.IGNORECASE)
+_PROPER_NAME_RE  = re.compile(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b')
+
+
+def _expand_pronoun_query(question: str, memory) -> str:
+    """If question opens with a pronoun, prepend the most recently discussed person name."""
+    if not _PRONOUN_LEAD_RE.match(question) or not memory:
+        return question
+    for msg in reversed(memory.get_history_for_prompt()):
+        if msg["role"] == "assistant":
+            names = _PROPER_NAME_RE.findall(msg["content"])
+            if names:
+                return f"{names[0]}: {question}"
+    return question
 
 # ── Chitchat / meta data ──────────────────────────────────────────────────────
 
@@ -210,8 +226,9 @@ class RAGWorkflow:
         return {"route": "continue"}
 
     def _router_node(self, state: WorkflowState) -> dict:
-        route = self._router.route(state["query"])
-        return {"route": route}
+        expanded = _expand_pronoun_query(state["query"], state.get("memory"))
+        route = self._router.route(expanded)
+        return {"route": route, "query": expanded}
 
     def _table_node(self, state: WorkflowState) -> dict:
         result = self._table.run(state["query"], self._sql_gen, state.get("source_filter"))
@@ -220,8 +237,8 @@ class RAGWorkflow:
         if result is None:
             return {}  # answer stays unset → conditional edge falls through to doc_image_agent
 
-        table_answer, table_sql = result
-        sources = state.get("source_filter") or list(self._vs_tool.list_sources())
+        table_answer, table_sql, table_sources = result
+        sources = state.get("source_filter") or table_sources
 
         if is_hybrid:
             # Hold the SQL result; final answer comes from RAG after merging both sources.

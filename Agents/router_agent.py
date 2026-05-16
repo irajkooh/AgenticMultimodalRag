@@ -11,7 +11,6 @@ _TABLE_INTENT_RE = re.compile(
     r"sell|sells|sold|selling|"
     r"(sales|revenue|profit|cost|price|amount|balance|credit|debit|spendings?|paid|owe)\b.*\b(of|for|by|in|per)\b|"
     r"\b(of|for|by|in)\b.*\b(sales|revenue|profit|cost|price|amount|balance|credit|debit|spendings?)|"
-    r"\b(who is|who are|who was|who were|who has|who have|who had)\b|"
     r"\bwhich\b.{0,40}\b(is|are|was|were|has|have|had)\b|"
     r"\b(list|show|give me|find|get|fetch|return|display)\b.{0,40}\b(name|rep|person|contact|manager|owner|agent|employee|staff|client|customer|vendor)\b)\b",
     re.IGNORECASE,

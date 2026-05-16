@@ -29,8 +29,8 @@ class TableAgent:
         question: str,
         sql_gen_agent,
         source_filter: Optional[List[str]] = None,
-    ) -> Optional[Tuple[str, str]]:
-        """Answer question via SQL. Returns (answer, sql) or None if no tables available."""
+    ) -> Optional[Tuple[str, str, List[str]]]:
+        """Answer question via SQL. Returns (answer, sql, table_sources) or None if no tables available."""
         import pandas as pd
 
         sources = source_filter or [
@@ -55,6 +55,8 @@ class TableAgent:
             conn.close()
             return None
 
+        table_sources = list({item["source"] for item in schema_info})
+
         result = sql_gen_agent.generate_and_execute(question, schema_info, conn)
         if result is None:
             conn.close()
@@ -64,7 +66,7 @@ class TableAgent:
 
         if not rows:
             conn.close()
-            return "No matching data found in the tables.", sql
+            return "No matching data found in the tables.", sql, table_sources
 
         result_df = pd.DataFrame(rows, columns=col_names) if col_names else pd.DataFrame(rows)
         try:
@@ -75,7 +77,7 @@ class TableAgent:
         # NULL aggregate: no rows matched the filter
         if len(rows) == 1 and len(col_names) == 1 and rows[0][0] is None:
             conn.close()
-            return "No matching data found for that filter.", sql
+            return "No matching data found for that filter.", sql, table_sources
 
         # Fetch detail rows for context on single-value aggregates
         detail_str = self._fetch_detail_rows(conn, sql) if len(rows) == 1 else ""
@@ -91,7 +93,7 @@ class TableAgent:
             final_answer += detail_str
         else:
             final_answer += f"\n\n{result_str}"
-        return final_answer, sql
+        return final_answer, sql, table_sources
 
     def _fetch_detail_rows(self, conn, sql: str) -> str:
         detail_sql = build_detail_sql(sql)

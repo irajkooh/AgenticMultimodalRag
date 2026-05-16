@@ -1,5 +1,5 @@
 """
-Modern Gradio UI for Multimodal RAG system.
+Modern Gradio UI for Agentic Multimodal RAG system.
 Chat and document management with clean, responsive layout.
 """
 import os
@@ -105,7 +105,7 @@ def _wait_for_backend(timeout: int = 300) -> bool:
 
 def _header_html(model, device):
   return (
-    "# 🧠 <span style='color:#3b82f6;'>Multimodal RAG</span>\n"
+    "# 🧠 <span style='color:#3b82f6;'>Agentic Multimodal RAG</span>\n"
     "<span style='color:#7c5cfc;font-size:1.1em;'>Chat with your pdf, word, excel, csv, txt, image, chart, and table documents.</span>\n"
     f"<br><span style='color:#ff9800;font-weight:bold;'>| LLM: {model} | Device: {device} |</span>"
     " <span style='color:#7c5cfc;font-weight:bold;'>Powered by ChromaDB</span>"
@@ -502,11 +502,11 @@ SAMPLE_QUESTIONS = [
 
 # ─── Build UI ──────────────────────────────────────────────────────────────────
 def build_ui():
-    with gr.Blocks(title="Multimodal RAG") as demo:
+    with gr.Blocks(title="Agentic Multimodal RAG") as demo:
       with gr.Row():
         with gr.Column(elem_classes="main-col"):
           header_md = gr.Markdown(
-            "# 🧠 <span style='color:#3b82f6;'>Multimodal RAG</span>\n"
+            "# 🧠 <span style='color:#3b82f6;'>Agentic Multimodal RAG</span>\n"
             "<span style='color:#7c5cfc;font-size:1.1em;'>Chat with your pdf, word, excel, csv, txt, image, chart, and table documents.</span>\n"
             "<br><span style='color:#ff9800;font-weight:bold;'>| Loading... |</span>",
             elem_id="header",

@@ -3,7 +3,7 @@
 # ...existing code...
 
 """
-FastAPI backend for the Multimodal RAG system.
+FastAPI backend for the Agentic Multimodal RAG system.
 Exposes endpoints for document management and querying.
 """
 import os
@@ -407,7 +407,7 @@ supervisor = SupervisorAgent(
 
 
 # ─── App ──────────────────────────────────────────────────────────────────────
-app = FastAPI(title="Multimodal RAG API", version="1.0.0")
+app = FastAPI(title="Agentic Multimodal RAG API", version="1.0.0")
 
 # CORS is a browser security mechanism that blocks web pages from making requests to a different domain than the one that served the page. For example, if your Gradio frontend runs on localhost:7860 and tries to call your FastAPI backend on localhost:8000, the browser would normally block that request.
 app.add_middleware( 

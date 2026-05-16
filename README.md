@@ -1,12 +1,12 @@
 ---
-title: Multimodal RAG
+title: Agentic Multimodal RAG
 emoji: 🧠
 colorFrom: green
 colorTo: purple
 sdk: docker
 pinned: true
 license: mit
-short_description: Multimodal RAG — PDFs, scans, tables, charts, URLs.
+short_description: Agentic Multimodal RAG — PDFs, scans, tables, charts, URLs.
 sleep_time: -1
 tags:
   - rag
@@ -16,7 +16,7 @@ tags:
   - chromadb
 ---
 
-## ⬡ Multimodal RAG System
+## ⬡ Agentic Multimodal RAG System
 
 A deployable **Multimodal Retrieval-Augmented Generation** system that answers questions **strictly** from your uploaded documents. Runs locally or on HuggingFace Spaces.
 
