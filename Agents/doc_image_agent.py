@@ -49,12 +49,12 @@ class DocImageAgent:
         relevant = [r for r in results if r.get("distance", 2.0) <= RELEVANCE_THRESHOLD]
         chunks_used = len(relevant)
 
+        best_per_src: dict = {}
         if relevant:
             best_dist = min(r.get("distance", 2.0) for r in relevant)
             # Build per-source best distance so we only attribute sources whose
             # closest chunk is near the overall best — prevents unrelated sources
             # from appearing just because one of their chunks scraped past threshold.
-            best_per_src: dict = {}
             for r in relevant:
                 src = r["metadata"].get("source", "")
                 d = r.get("distance", 2.0)
@@ -110,7 +110,15 @@ class DocImageAgent:
 
         if not source_filter:
             cited = cited_by_num or cited_by_name
-            sources = cited if cited else candidate_sources
+            if cited:
+                sources = cited
+            elif best_per_src:
+                # No explicit citation — attribute only the single closest source
+                # to avoid unrelated files (IBC, word.docx) being shown when the
+                # LLM gives a brief answer with no Doc-N reference.
+                sources = [min(best_per_src, key=best_per_src.get)]
+            else:
+                sources = candidate_sources
         else:
             sources = candidate_sources
 
