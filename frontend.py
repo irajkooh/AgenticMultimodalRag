@@ -707,6 +707,7 @@ def build_ui():
           return gr.update(choices=docs, value=matched)
 
       filter_pattern_tb.submit(fn=_apply_filter, inputs=[filter_pattern_tb, all_docs_state], outputs=[source_filter_dd])
+      filter_pattern_tb.change(fn=_apply_filter, inputs=[filter_pattern_tb, all_docs_state], outputs=[source_filter_dd])
 
       demo.load(
           fn=None,
