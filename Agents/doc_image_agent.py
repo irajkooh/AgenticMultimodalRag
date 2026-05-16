@@ -67,9 +67,10 @@ class DocImageAgent:
         else:
             source_chunks = results if not source_filter else []
 
-        # Pass only relevance-filtered chunks to the LLM so irrelevant sources
-        # (e.g. reference txt files) don't pollute context.
-        llm_results = relevant if relevant else results
+        # Send only the best-source chunks to the LLM — source_chunks are already
+        # filtered to sources whose closest chunk is within best_dist + 0.10, so
+        # unrelated sources (IBC, standards) won't drown out the actual answer.
+        llm_results = source_chunks if source_chunks else (relevant if relevant else results)
 
         context = self._rag._build_context(llm_results)
 
@@ -150,9 +151,11 @@ class DocImageAgent:
             f"Documents to summarize:\n{source_list}"
         )
 
+        # Exclude conversation history — prior questions bleed topic context into
+        # summaries (e.g. a previous "occupant load" Q causes all docs to be
+        # summarized as if they're about occupant loads).
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            *memory.get_history_for_prompt(),
             {"role": "user", "content": user_message},
         ]
 

@@ -55,14 +55,18 @@ class TableAgent:
             conn.close()
             return None
 
-        table_sources = list({item["source"] for item in schema_info})
-
         result = sql_gen_agent.generate_and_execute(question, schema_info, conn)
         if result is None:
             conn.close()
             return None
 
         sql, rows, col_names = result
+
+        # Attribute only sources whose table names appear in the executed SQL,
+        # not all sources that happen to have tables loaded.
+        sql_lower = sql.lower()
+        used_sources = [item["source"] for item in schema_info if item["table_name"].lower() in sql_lower]
+        table_sources = list(dict.fromkeys(used_sources)) or list({item["source"] for item in schema_info})
 
         if not rows:
             conn.close()
