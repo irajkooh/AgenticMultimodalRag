@@ -8,6 +8,9 @@ from typing import List, Optional, Tuple
 
 from Prompts.rag_prompts import RELEVANCE_THRESHOLD
 
+# Matches the person-name prefix that pronoun expansion prepends: "Iraj Koohi: ..."
+_PERSON_PREFIX_RE = re.compile(r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*:')
+
 logger = logging.getLogger(__name__)
 
 _SUMMARIZE_ALL_RE = re.compile(
@@ -71,6 +74,16 @@ class DocImageAgent:
         # filtered to sources whose closest chunk is within best_dist + 0.10, so
         # unrelated sources (IBC, standards) won't drown out the actual answer.
         llm_results = source_chunks if source_chunks else (relevant if relevant else results)
+
+        # Person-name filter: when the query was pronoun-expanded (starts with "Name: ..."),
+        # keep only chunks that explicitly mention that person. This prevents img_1.png
+        # (which contains multiple people) from returning another person's data as Iraj's.
+        m = _PERSON_PREFIX_RE.match(question)
+        if m:
+            first_name = m.group(1).split()[0].lower()
+            person_chunks = [r for r in llm_results if first_name in r["text"].lower()]
+            if person_chunks:
+                llm_results = person_chunks
 
         context = self._rag._build_context(llm_results)
 

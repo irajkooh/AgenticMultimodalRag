@@ -26,13 +26,13 @@ from .workflow_state import WorkflowState
 
 logger = logging.getLogger(__name__)
 
-_PRONOUN_LEAD_RE = re.compile(r'^\s*(he|she|his|her|their|its)\b', re.IGNORECASE)
-_PROPER_NAME_RE  = re.compile(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b')
+_PRONOUN_RE     = re.compile(r'\b(he|she|his|her|him|they|their)\b', re.IGNORECASE)
+_PROPER_NAME_RE = re.compile(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b')
 
 
 def _expand_pronoun_query(question: str, memory) -> str:
-    """If question opens with a pronoun, prepend the most recently discussed person name."""
-    if not _PRONOUN_LEAD_RE.match(question) or not memory:
+    """If question contains a person-referencing pronoun, prepend the most recently discussed person name."""
+    if not _PRONOUN_RE.search(question) or not memory:
         return question
     for msg in reversed(memory.get_history_for_prompt()):
         if msg["role"] == "assistant":
