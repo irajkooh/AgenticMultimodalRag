@@ -18,7 +18,8 @@ from utils.memory import ConversationMemory
 logger = logging.getLogger(__name__)
 
 DEFAULT_OLLAMA_MODEL  = "llama3.2"
-DEFAULT_GROQ_MODEL    = "llama-3.3-70b-versatile"
+#DEFAULT_GROQ_MODEL    = "llama-3.3-70b-versatile"
+DEFAULT_GROQ_MODEL    = "openai/gpt-oss-20b"
 GROQ_FALLBACK_MODEL   = "llama-3.1-8b-instant"   # separate daily quota, higher limits
 DEFAULT_HF_MODEL      = "meta-llama/Llama-3.1-8B-Instruct"
 
